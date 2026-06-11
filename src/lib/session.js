@@ -1,29 +1,30 @@
-const SESSION_KEY = 'copa_session';
+import { v4 as uuidv4 } from 'uuid';
 
-export function getSession() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? JSON.parse(raw) : { playerId: null, playerName: null, hostToken: null };
-  } catch {
-    return { playerId: null, playerName: null, hostToken: null };
-  }
-}
+const TOKEN_KEY = 'copa_session_token';
+const NAME_KEY = 'copa_player_name';
+const GAME_KEY = 'copa_game_id';
 
-export function setSession(data) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(data));
-}
-
-export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
-}
-
-// Legacy helpers kept for compatibility
 export function getOrCreateToken() {
-  let t = localStorage.getItem('copa_token');
-  if (!t) { t = crypto.randomUUID(); localStorage.setItem('copa_token', t); }
-  return t;
+  let token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    token = uuidv4();
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+  return token;
 }
-export function setPlayerName(name) { localStorage.setItem('copa_name', name); }
-export function getPlayerName() { return localStorage.getItem('copa_name') || ''; }
-export function setGameId(id) { localStorage.setItem('copa_game_id', id); }
-export function getGameId() { return localStorage.getItem('copa_game_id'); }
+
+export function setPlayerName(name) {
+  localStorage.setItem(NAME_KEY, name);
+}
+
+export function getPlayerName() {
+  return localStorage.getItem(NAME_KEY) || '';
+}
+
+export function setGameId(id) {
+  localStorage.setItem(GAME_KEY, id);
+}
+
+export function getGameId() {
+  return localStorage.getItem(GAME_KEY) || null;
+}

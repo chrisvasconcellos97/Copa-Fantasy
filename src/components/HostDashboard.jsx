@@ -1,51 +1,49 @@
-export default function HostDashboard({ players = [], picks = [], currentPickerIndex, onPoke, teams = [] }) {
-  function getTeamCount(playerId) {
-    return picks.filter((p) => p.game_player_id === playerId).length;
-  }
+export default function HostDashboard({ players, picks, currentPickerIndex, onPoke, teams }) {
+  if (!players) return null;
 
-  function getTeamNames(playerId) {
-    const playerPicks = picks.filter((p) => p.game_player_id === playerId);
-    return playerPicks.map((pick) => {
-      const team = teams.find((t) => String(t.api_id) === String(pick.team_api_id));
-      return team ? team.name : `Team ${pick.team_api_id}`;
-    });
-  }
+  const teamMap = {};
+  if (teams) teams.forEach((t) => { teamMap[t.api_id] = t; });
 
   return (
     <div className="host-dashboard">
-      <div className="section-title" style={{ fontSize: '0.9rem' }}>
-        🎯 Host Dashboard
+      <div className="section-header">
+        <span className="section-title">🎮 Host Dashboard</span>
+        <span className="badge badge-gold">Host</span>
       </div>
       {players.map((player, i) => {
+        const playerPicks = picks
+          ? picks.filter((p) => p.game_player_id === player.id)
+          : [];
         const isCurrent = i === currentPickerIndex;
-        const count = getTeamCount(player.id);
-        const teamNames = getTeamNames(player.id);
         return (
           <div key={player.id} className="host-player-row">
-            <div>
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: isCurrent ? 'var(--gold)' : 'var(--text)' }}
-                >
-                  {player.player_name}
-                  {isCurrent && ' ← picking'}
+            <div
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: isCurrent ? 'var(--gold)' : 'var(--border)',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ flex: 1, fontWeight: isCurrent ? 700 : 400 }}>
+              {player.player_name}
+              {player.is_host && (
+                <span className="badge badge-muted" style={{ marginLeft: '0.4rem', fontSize: '0.65rem' }}>
+                  host
                 </span>
-                <span className="badge badge-muted">{count}/8</span>
-              </div>
-              {teamNames.length > 0 && (
-                <div className="text-xs text-muted mt-1" style={{ maxWidth: 220 }}>
-                  {teamNames.join(', ')}
-                </div>
               )}
-            </div>
+            </span>
+            <span className="label text-gold" style={{ marginRight: '0.5rem' }}>
+              {playerPicks.length}/8
+            </span>
             {isCurrent && onPoke && (
               <button
-                className="btn btn-gold btn-sm"
-                onClick={() => onPoke(player.id)}
-                title={`Poke ${player.player_name}`}
+                className="btn btn-sm btn-secondary"
+                onClick={() => onPoke(player)}
+                title="Poke player"
               >
-                👉 Poke
+                👋 Poke
               </button>
             )}
           </div>

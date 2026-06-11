@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export default function LeaderboardRow({
   rank,
   player,
   score,
-  picks,
-  playerPicks,
+  picks = [],
+  playerPicks = [],
   captainPickId,
-  teams,
-  players,
+  teams = [],
+  players = [],
   isExpanded,
   onToggle,
   isHost,
@@ -17,57 +17,93 @@ export default function LeaderboardRow({
   const [overrideVal, setOverrideVal] = useState('');
   const [overrideNote, setOverrideNote] = useState('');
 
-  const teamMap = {};
-  if (teams) teams.forEach((t) => { teamMap[t.api_id] = t; });
+  const rankClass = rank <= 3 ? `rank-${rank}` : '';
+  const playerName = player?.player_name || player?.game_players?.player_name || 'Unknown';
+  const totalPoints = score?.total_points ?? 0;
 
-  const playerMap = {};
-  if (players) players.forEach((p) => { playerMap[p.api_id] = p; });
+  const myTeamPicks = picks.filter(
+    (p) => String(p.game_player_id) === String(player?.id || score?.game_player_id)
+  );
 
-  const myTeams = picks ? picks.filter((pk) => pk.game_player_id === player.id) : [];
-  const myPlayerPicks = playerPicks ? playerPicks.filter((pp) => pp.game_player_id === player.id) : [];
-  const captainPlayer = playerMap[captainPickId];
+  const myPlayerPicks = playerPicks.filter(
+    (p) => String(p.game_player_id) === String(player?.id || score?.game_player_id)
+  );
 
-  const totalPoints = score ? score.total_points : 0;
-  const breakdown = score ? (score.breakdown || {}) : {};
+  function getTeam(apiId) {
+    return teams.find((t) => String(t.api_id) === String(apiId));
+  }
+
+  function getPlayer(apiId) {
+    return players.find((p) => String(p.api_id) === String(apiId));
+  }
+
+  function handleOverride(e) {
+    e.preventDefault();
+    if (onOverride) {
+      onOverride({
+        gamePlayerId: player?.id || score?.game_player_id,
+        points: Number(overrideVal),
+        note: overrideNote,
+      });
+      setOverrideVal('');
+      setOverrideNote('');
+    }
+  }
+
+  const breakdown = score?.breakdown || {};
 
   return (
-    <div className="lb-row">
-      <div className="lb-header" onClick={onToggle}>
-        <div className={`lb-rank${rank <= 3 ? ' top' : ''}`}>
-          {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}
-        </div>
+    <div className="leaderboard-row">
+      <div className="leaderboard-row-header" onClick={onToggle}>
+        <div className={`rank-badge ${rankClass}`}>{rank}</div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-            {player.player_name}
-            {captainPlayer && (
-              <span style={{ color: 'var(--gold)', marginLeft: 6, fontSize: '0.8rem' }}>
-                👑 {captainPlayer.name}
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-muted">{myTeams.length} teams picked</div>
+          <div className="font-semibold">{playerName}</div>
+          {myTeamPicks.length > 0 && (
+            <div className="text-xs text-muted mt-1">
+              {myTeamPicks
+                .map((p) => getTeam(p.team_api_id)?.name || `Team`)
+                .join(' · ')}
+            </div>
+          )}
         </div>
-        <div style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--gold)' }}>
-          {totalPoints}
-          <span className="text-xs text-muted" style={{ marginLeft: 4, fontSize: '0.7rem' }}>pts</span>
-        </div>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{isExpanded ? '▲' : '▼'}</span>
+        <div className="leaderboard-score">{totalPoints} pts</div>
+        <span className="text-muted text-sm" style={{ marginLeft: 8 }}>
+          {isExpanded ? '▲' : '▼'}
+        </span>
       </div>
 
       {isExpanded && (
-        <div className="lb-body">
-          {myTeams.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div className="form-label" style={{ marginBottom: 8 }}>Teams</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {myTeams.map((pick) => {
-                  const team = teamMap[pick.team_api_id];
+        <div className="leaderboard-expanded">
+          {/* Teams */}
+          {myTeamPicks.length > 0 && (
+            <div className="mb-4">
+              <div className="text-xs text-muted font-semibold mb-2 text-uppercase" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Teams
+              </div>
+              <div className="flex wrap gap-2">
+                {myTeamPicks.map((pick) => {
+                  const team = getTeam(pick.team_api_id);
+                  const fb = `https://ui-avatars.com/api/?name=${encodeURIComponent(team?.name || 'T')}&background=2a2a3a&color=e8e8f0&size=24`;
                   return (
-                    <div key={pick.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--dark-bg)', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)' }}>
+                    <div
+                      key={pick.id}
+                      className="flex items-center gap-1 text-sm"
+                      style={{
+                        background: 'var(--card-bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        padding: '0.25rem 0.5rem',
+                      }}
+                    >
                       {team?.logo_url && (
-                        <img src={team.logo_url} alt={team.name} style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                        <img
+                          src={team.logo_url || fb}
+                          alt={team.name}
+                          style={{ width: 18, height: 18, objectFit: 'contain' }}
+                          onError={(e) => { e.target.src = fb; }}
+                        />
                       )}
-                      <span style={{ fontSize: '0.8rem' }}>{team ? team.name : pick.team_api_id}</span>
+                      <span>{team?.name || `Team ${pick.team_api_id}`}</span>
                     </div>
                   );
                 })}
@@ -75,80 +111,79 @@ export default function LeaderboardRow({
             </div>
           )}
 
+          {/* Players */}
           {myPlayerPicks.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div className="form-label" style={{ marginBottom: 8 }}>Players</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {myPlayerPicks.map((pp) => {
-                  const pl = playerMap[pp.player_api_id];
-                  const isCaptain = pp.player_api_id === captainPickId;
+            <div className="mb-4">
+              <div className="text-xs text-muted font-semibold mb-2" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Players
+              </div>
+              <div className="flex wrap gap-2">
+                {myPlayerPicks.map((pick) => {
+                  const pl = getPlayer(pick.player_api_id);
+                  const isCaptain = String(pick.player_api_id) === String(captainPickId);
                   return (
-                    <span
-                      key={pp.id}
+                    <div
+                      key={pick.id}
+                      className="flex items-center gap-1 text-sm"
                       style={{
-                        fontSize: '0.8rem',
-                        background: isCaptain ? 'rgba(255,215,0,0.15)' : 'var(--dark-bg)',
-                        padding: '3px 10px',
-                        borderRadius: 20,
+                        background: isCaptain ? 'rgba(255,215,0,0.08)' : 'var(--card-bg)',
                         border: `1px solid ${isCaptain ? 'var(--gold)' : 'var(--border)'}`,
-                        color: isCaptain ? 'var(--gold)' : 'var(--text)',
+                        borderRadius: 6,
+                        padding: '0.25rem 0.5rem',
                       }}
                     >
-                      {isCaptain ? '👑 ' : ''}{pl ? pl.name : pp.player_api_id}
-                    </span>
+                      {isCaptain && <span>👑</span>}
+                      <span>{pl?.name || `Player ${pick.player_api_id}`}</span>
+                    </div>
                   );
                 })}
               </div>
             </div>
           )}
 
+          {/* Breakdown */}
           {Object.keys(breakdown).length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div className="form-label" style={{ marginBottom: 6 }}>Score Breakdown</div>
+            <div className="mb-4">
+              <div className="text-xs text-muted font-semibold mb-2" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Score Breakdown
+              </div>
               {Object.entries(breakdown).map(([key, val]) => (
-                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '2px 0', color: 'var(--text-muted)' }}>
-                  <span>{key}</span>
-                  <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                    {val >= 0 ? '+' : ''}{val}
-                  </span>
+                <div key={key} className="flex justify-between text-sm py-1" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <span className="text-muted">{key}</span>
+                  <span className="text-gold font-semibold">+{val}</span>
                 </div>
               ))}
             </div>
           )}
 
-          {isHost && onOverride && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-              <div className="form-label" style={{ marginBottom: 8 }}>Score Override</div>
-              <div style={{ display: 'flex', gap: 8 }}>
+          {/* Host override */}
+          {isHost && (
+            <form onSubmit={handleOverride} className="mt-3">
+              <div className="text-xs text-muted font-semibold mb-2" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Manual Override
+              </div>
+              <div className="flex gap-2">
                 <input
                   type="number"
-                  className="input"
+                  className="input input-sm"
                   placeholder="Points"
                   value={overrideVal}
                   onChange={(e) => setOverrideVal(e.target.value)}
-                  style={{ width: 100 }}
+                  style={{ width: 90 }}
                 />
                 <input
                   type="text"
-                  className="input"
+                  className="input input-sm"
                   placeholder="Note (optional)"
                   value={overrideNote}
                   onChange={(e) => setOverrideNote(e.target.value)}
                   style={{ flex: 1 }}
                 />
-                <button
-                  className="btn btn-gold btn-sm"
-                  onClick={() => {
-                    onOverride(player.id, parseInt(overrideVal, 10) || 0, overrideNote);
-                    setOverrideVal('');
-                    setOverrideNote('');
-                  }}
-                  disabled={!overrideVal}
-                >
+                <button type="submit" className="btn btn-gold btn-sm" disabled={!overrideVal}>
                   Apply
                 </button>
               </div>
-            </div>
+            </form>
           )}
         </div>
       )}

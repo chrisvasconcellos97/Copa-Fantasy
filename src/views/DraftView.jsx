@@ -1,454 +1,540 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useGame } from '../hooks/useGame'
-import { usePlayers } from '../hooks/usePlayers'
-import { useDraft } from '../hooks/useDraft'
-import { useNotifications } from '../hooks/useNotifications'
-import TeamCard from '../components/TeamCard'
-import ConfirmBar from '../components/ConfirmBar'
-import SnakeOrderBar from '../components/SnakeOrderBar'
-import HostDashboard from '../components/HostDashboard'
-import PlayerCard from '../components/PlayerCard'
-import CaptainGrid from '../components/CaptainGrid'
-import PokeToast from '../components/PokeToast'
-import { supabase } from '../lib/supabase'
-import { getOrCreateToken } from '../lib/session'
-import { getCurrentPicker, getPotFromPickNumber } from '../lib/draft'
-import { FALLBACK_POTS } from '../lib/constants'
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { getSession } from '../lib/session';
+import { useGame } from '../hooks/useGame';
+import { usePlayers } from '../hooks/usePlayers';
+import { useDraft } from '../hooks/useDraft';
+import { useNotifications } from '../hooks/useNotifications';
+import { FALLBACK_POTS } from '../lib/constants';
+import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
+import TeamCard from '../components/TeamCard';
+import PlayerCard from '../components/PlayerCard';
+import ConfirmBar from '../components/ConfirmBar';
+import SnakeOrderBar from '../components/SnakeOrderBar';
+import HostDashboard from '../components/HostDashboard';
+import SquadBuilder from '../components/SquadBuilder';
+import CaptainGrid from '../components/CaptainGrid';
+import PokeToast from '../components/PokeToast';
 
-const POSITIONS = ['FWD', 'MID', 'DEF']
+const TEAMS_PER_PLAYER = 8;
+const PLAYERS_PER_TEAM = 3;
 
 export default function DraftView() {
-  const { gameId } = useParams()
-  const navigate = useNavigate()
-  const { game, loading: gameLoading } = useGame(gameId)
-  const { players, loading: playersLoading } = usePlayers(gameId)
-  const { picks, loading: picksLoading } = useDraft(gameId)
-  const myToken = getOrCreateToken()
+  const { gameId } = useParams();
+  const navigate = useNavigate();
+  const session = getSession();
+  const myPlayerId = session?.playerId;
+  const isHost = Boolean(session?.hostToken);
 
-  const [teams, setTeams] = useState([])
-  const [selectedTeam, setSelectedTeam] = useState(null)
-  const [confirming, setConfirming] = useState(false)
+  const { game, loading: gameLoading } = useGame(gameId);
+  const { players } = usePlayers(gameId);
+  const { picks, loading: picksLoading } = useDraft(gameId);
+  const { showPoke, dismissPoke, pokeMessage } = useNotifications(myPlayerId);
 
-  const [dbPlayers, setDbPlayers] = useState([])
-  const [playerPicks, setPlayerPicks] = useState([])
-  const [selectedPlayerByPos, setSelectedPlayerByPos] = useState({})
-  const [activeTeamPick, setActiveTeamPick] = useState(null)
-  const [activePosition, setActivePosition] = useState('FWD')
-  const [savingPlayer, setSavingPlayer] = useState(false)
+  // Teams
+  const [teams, setTeams] = useState([]);
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [confirmingPick, setConfirmingPick] = useState(false);
 
-  const [captainPickId, setCaptainPickId] = useState(null)
-  const [savingCaptain, setSavingCaptain] = useState(false)
+  // Player selection
+  const [squadPlayers, setSquadPlayers] = useState({});
+  const [activeTeamTab, setActiveTeamTab] = useState(null);
+  const [selectedPlayers, setSelectedPlayers] = useState({});
+  const [savingPlayers, setSavingPlayers] = useState(false);
+  const [existingPlayerPicks, setExistingPlayerPicks] = useState([]);
 
-  const myPlayer = players.find(function(p) { return p.session_token === myToken })
-  const { unread, dismiss } = useNotifications(myPlayer ? myPlayer.id : null)
-  const isHost = game && game.host_session_token === myToken
+  // Captain
+  const [captainId, setCaptainId] = useState(null);
+  const [savingCaptain, setSavingCaptain] = useState(false);
+  const [existingCaptain, setExistingCaptain] = useState(null);
 
-  useEffect(function() {
-    if (game && (game.status === 'tournament' || game.status === 'complete')) {
-      navigate('/leaderboard/' + gameId, { replace: true })
+  // Redirect when tournament starts
+  useEffect(() => {
+    if (!game) return;
+    if (game.status === 'tournament' || game.status === 'complete') {
+      navigate(`/leaderboard/${gameId}`, { replace: true });
     }
-  }, [game, gameId, navigate])
+  }, [game, gameId, navigate]);
 
-  useEffect(function() {
-    supabase.from('teams').select('*').then(function(result) {
-      var data = result.data
+  // Load teams from DB or fallback
+  useEffect(() => {
+    async function loadTeams() {
+      const { data } = await supabase.from('teams').select('*').order('pot');
       if (data && data.length > 0) {
-        setTeams(data)
+        setTeams(data);
       } else {
-        var fallback = []
-        Object.entries(FALLBACK_POTS).forEach(function(entry) {
-          var pot = entry[0]
-          var names = entry[1]
-          names.forEach(function(name, idx) {
-            fallback.push({ api_id: 'fallback-' + pot + '-' + idx, name: name, pot: parseInt(pot), logo_url: null })
-          })
-        })
-        setTeams(fallback)
+        // Build from FALLBACK_POTS
+        const fallback = [];
+        for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
+          names.forEach((name, idx) => {
+            fallback.push({
+              api_id: `fallback-${pot}-${idx}`,
+              name,
+              pot: parseInt(pot),
+              logo_url: null,
+            });
+          });
+        }
+        setTeams(fallback);
       }
-    })
-  }, [])
-
-  useEffect(function() {
-    if (game && (game.status === 'selecting_players' || game.status === 'selecting_captain')) {
-      supabase.from('players').select('*').then(function(result) { setDbPlayers(result.data || []) })
     }
-  }, [game && game.status])
+    loadTeams();
+  }, []);
 
-  useEffect(function() {
-    if (!gameId) return
-    supabase.from('player_picks').select('*').eq('game_id', gameId).then(function(result) {
-      setPlayerPicks(result.data || [])
-    })
-  }, [gameId, game && game.status])
+  // Load existing player picks and captain
+  useEffect(() => {
+    if (!gameId || !myPlayerId) return;
+    async function loadExisting() {
+      const { data: pp } = await supabase
+        .from('player_picks')
+        .select('*')
+        .eq('game_id', gameId)
+        .eq('game_player_id', myPlayerId);
+      if (pp) setExistingPlayerPicks(pp);
 
-  useEffect(function() {
-    if (!myPlayer) return
-    supabase.from('captain_picks').select('*').eq('game_id', gameId).eq('game_player_id', myPlayer.id).single().then(function(result) {
-      if (result.data) setCaptainPickId(result.data.player_pick_id)
-    })
-  }, [gameId, myPlayer && myPlayer.id])
-
-  var currentPicker = useMemo(function() {
-    if (!game || !players.length) return null
-    return getCurrentPicker(picks, players, game.current_pick_number)
-  }, [game, picks, players])
-
-  var isMyTurn = currentPicker && currentPicker.session_token === myToken
-
-  var currentPickerIndex = useMemo(function() {
-    if (!currentPicker) return -1
-    var sorted = players.slice().sort(function(a, b) { return a.draft_order - b.draft_order })
-    return sorted.findIndex(function(p) { return p.id === currentPicker.id })
-  }, [currentPicker, players])
-
-  var takenByMap = useMemo(function() {
-    var map = {}
-    picks.forEach(function(pick) {
-      var player = players.find(function(p) { return p.id === pick.player_id })
-      map[pick.team_api_id] = player ? player.name : 'Someone'
-    })
-    return map
-  }, [picks, players])
-
-  var myPickIds = useMemo(function() {
-    if (!myPlayer) return new Set()
-    return new Set(picks.filter(function(p) { return p.player_id === myPlayer.id }).map(function(p) { return p.team_api_id }))
-  }, [picks, myPlayer])
-
-  var teamsByPot = useMemo(function() {
-    var grouped = { 1: [], 2: [], 3: [], 4: [] }
-    teams.forEach(function(t) {
-      var pot = t.pot || 1
-      if (grouped[pot]) grouped[pot].push(t)
-    })
-    return grouped
-  }, [teams])
-
-  var currentPot = game ? getPotFromPickNumber(game.current_pick_number, players.length || 1) : 1
-
-  async function handleConfirmTeamPick() {
-    if (!selectedTeam || !isMyTurn || confirming) return
-    setConfirming(true)
-    try {
-      await supabase.from('draft_picks').insert({
-        game_id: gameId,
-        player_id: myPlayer.id,
-        team_api_id: selectedTeam.api_id,
-        pot: selectedTeam.pot,
-        pick_number: game.current_pick_number,
-      })
-      var nextPick = game.current_pick_number + 1
-      var totalPicks = game.total_picks || players.length * 8
-      if (nextPick > totalPicks) {
-        await supabase.from('games').update({ status: 'selecting_players', current_pick_number: nextPick }).eq('id', gameId)
-      } else {
-        await supabase.from('games').update({ current_pick_number: nextPick }).eq('id', gameId)
+      const { data: cp } = await supabase
+        .from('captain_picks')
+        .select('*')
+        .eq('game_id', gameId)
+        .eq('game_player_id', myPlayerId)
+        .single();
+      if (cp) {
+        setExistingCaptain(cp);
+        setCaptainId(cp.player_api_id);
       }
-      setSelectedTeam(null)
+    }
+    loadExisting();
+  }, [gameId, myPlayerId, game?.status]);
+
+  // Load squad players for a team
+  async function loadSquadForTeam(teamApiId) {
+    if (squadPlayers[teamApiId]) return;
+    const { data } = await supabase
+      .from('players')
+      .select('*')
+      .eq('team_api_id', teamApiId);
+    setSquadPlayers((prev) => ({ ...prev, [teamApiId]: data || [] }));
+  }
+
+  const totalRounds = TEAMS_PER_PLAYER;
+  const currentPickerIdx = useMemo(
+    () => getCurrentPicker(picks, players, totalRounds),
+    [picks, players, totalRounds]
+  );
+
+  const currentPicker = currentPickerIdx >= 0 ? players[currentPickerIdx] : null;
+  const isMyTurn = currentPicker?.id === myPlayerId;
+  const draftComplete = picks.length >= players.length * TEAMS_PER_PLAYER;
+
+  const takenTeamIds = new Set(picks.map((p) => String(p.team_api_id)));
+
+  function getTakenBy(teamApiId) {
+    const pick = picks.find((p) => String(p.team_api_id) === String(teamApiId));
+    if (!pick) return null;
+    const pl = players.find((p) => p.id === pick.game_player_id);
+    return pl?.player_name || 'Someone';
+  }
+
+  async function handleConfirmPick() {
+    if (!selectedTeam || !isMyTurn || confirmingPick) return;
+    setConfirmingPick(true);
+    try {
+      const { error } = await supabase.from('draft_picks').insert({
+        game_id: gameId,
+        game_player_id: myPlayerId,
+        pick_number: picks.length + 1,
+        team_api_id: selectedTeam.api_id,
+      });
+      if (error) throw error;
+      setSelectedTeam(null);
+    } catch (err) {
+      alert(err.message);
     } finally {
-      setConfirming(false)
+      setConfirmingPick(false);
     }
   }
 
-  var myPicks = useMemo(function() {
-    if (!myPlayer) return []
-    return picks.filter(function(p) { return p.player_id === myPlayer.id }).sort(function(a, b) { return a.pick_number - b.pick_number })
-  }, [picks, myPlayer])
+  async function handlePoke(player) {
+    await supabase.from('notifications').insert({
+      game_player_id: player.id,
+      type: 'poke',
+      message: "It's your turn to pick! 👈",
+      read: false,
+    });
+  }
 
-  useEffect(function() {
-    if (!game || game.status !== 'selecting_players') return
-    var needsPlayers = myPicks.find(function(pick) {
-      var pp = playerPicks.filter(function(p) { return p.draft_pick_id === pick.id })
-      return pp.length < 3
-    })
-    if (needsPlayers && (!activeTeamPick || activeTeamPick.id !== needsPlayers.id)) {
-      setActiveTeamPick(needsPlayers)
-      setActivePosition('FWD')
-      setSelectedPlayerByPos({})
-    }
-  }, [myPicks, playerPicks, game && game.status])
+  async function handleAdvancePhase() {
+    const next = {
+      drafting_teams: 'selecting_players',
+      selecting_players: 'selecting_captain',
+      selecting_captain: 'tournament',
+    };
+    const current = game?.status;
+    if (!next[current]) return;
+    const { error } = await supabase
+      .from('games')
+      .update({ status: next[current] })
+      .eq('id', gameId);
+    if (error) alert(error.message);
+  }
 
-  var teamPlayers = useMemo(function() {
-    if (!activeTeamPick) return []
-    return dbPlayers.filter(function(p) { return p.team_api_id === activeTeamPick.team_api_id })
-  }, [dbPlayers, activeTeamPick])
+  // My draft teams
+  const myDraftPicks = picks.filter((p) => p.game_player_id === myPlayerId);
+  const myTeams = myDraftPicks
+    .map((p) => teams.find((t) => String(t.api_id) === String(p.team_api_id)))
+    .filter(Boolean);
 
-  var playersForPosition = useMemo(function() {
-    return teamPlayers.filter(function(p) { return p.position === activePosition })
-  }, [teamPlayers, activePosition])
+  // Toggle player selection
+  function togglePlayer(teamApiId, player) {
+    setSelectedPlayers((prev) => {
+      const teamSel = prev[teamApiId] || [];
+      if (teamSel.some((p) => String(p.api_id) === String(player.api_id))) {
+        return { ...prev, [teamApiId]: teamSel.filter((p) => String(p.api_id) !== String(player.api_id)) };
+      }
+      if (teamSel.length >= PLAYERS_PER_TEAM) return prev;
+      return { ...prev, [teamApiId]: [...teamSel, player] };
+    });
+  }
 
-  var pickedPlayerApiIds = useMemo(function() {
-    return new Set(playerPicks.map(function(pp) { return pp.player_api_id }))
-  }, [playerPicks])
-
-  async function handleSavePlayer() {
-    if (!activeTeamPick || !myPlayer || savingPlayer) return
-    var selected = selectedPlayerByPos[activePosition]
-    if (!selected) return
-    setSavingPlayer(true)
+  async function handleSavePlayers() {
+    setSavingPlayers(true);
     try {
-      await supabase.from('player_picks').insert({
-        game_id: gameId,
-        game_player_id: myPlayer.id,
-        draft_pick_id: activeTeamPick.id,
-        player_api_id: selected.api_id,
-        position: activePosition,
-      })
-      var refreshed = await supabase.from('player_picks').select('*').eq('game_id', gameId)
-      setPlayerPicks(refreshed.data || [])
-      var nextPos = POSITIONS[POSITIONS.indexOf(activePosition) + 1]
-      if (nextPos) {
-        setActivePosition(nextPos)
-        setSelectedPlayerByPos(function(prev) {
-          var next = Object.assign({}, prev)
-          next[activePosition] = undefined
-          return next
-        })
-      } else {
-        setSelectedPlayerByPos({})
-        setActivePosition('FWD')
-        var allPicks = await supabase.from('player_picks').select('*').eq('game_id', gameId).eq('game_player_id', myPlayer.id)
-        var totalNeeded = myPicks.length * 3
-        if (allPicks.data && allPicks.data.length >= totalNeeded) {
-          var allPlayerPicks = await supabase.from('player_picks').select('*').eq('game_id', gameId)
-          var neededTotal = picks.length * 3
-          if (allPlayerPicks.data && allPlayerPicks.data.length >= neededTotal) {
-            await supabase.from('games').update({ status: 'selecting_captain' }).eq('id', gameId)
-          }
+      const rows = [];
+      for (const [teamApiId, pls] of Object.entries(selectedPlayers)) {
+        for (const pl of pls) {
+          rows.push({
+            game_id: gameId,
+            game_player_id: myPlayerId,
+            player_api_id: pl.api_id,
+            team_api_id: teamApiId,
+          });
         }
       }
-    } finally {
-      setSavingPlayer(false)
-    }
-  }
-
-  async function handleSelectCaptain(pp) {
-    if (!myPlayer || savingCaptain) return
-    setSavingCaptain(true)
-    try {
-      await supabase.from('captain_picks').upsert({
-        game_id: gameId,
-        game_player_id: myPlayer.id,
-        player_pick_id: pp.id,
-      }, { onConflict: 'game_id,game_player_id' })
-      setCaptainPickId(pp.id)
-      var allCaptains = await supabase.from('captain_picks').select('*').eq('game_id', gameId)
-      if (allCaptains.data && allCaptains.data.length >= players.length) {
-        await supabase.from('games').update({ status: 'tournament' }).eq('id', gameId)
+      if (rows.length > 0) {
+        const { error } = await supabase
+          .from('player_picks')
+          .upsert(rows, { onConflict: 'game_id,game_player_id,player_api_id' });
+        if (error) throw error;
       }
+      alert('Players saved!');
+    } catch (err) {
+      alert(err.message);
     } finally {
-      setSavingCaptain(false)
+      setSavingPlayers(false);
     }
   }
 
-  async function handlePoke(targetPlayer) {
-    await supabase.from('notifications').insert({
-      game_id: gameId,
-      game_player_id: targetPlayer.id,
-      type: 'poke',
-      message: (myPlayer ? myPlayer.name : 'Someone') + ' is poking you — it\'s your turn to pick!',
-      read: false,
-    })
+  async function handleSaveCaptain() {
+    if (!captainId) return;
+    setSavingCaptain(true);
+    try {
+      const { error } = await supabase
+        .from('captain_picks')
+        .upsert(
+          { game_id: gameId, game_player_id: myPlayerId, player_api_id: captainId },
+          { onConflict: 'game_id,game_player_id' }
+        );
+      if (error) throw error;
+      alert('Captain saved!');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingCaptain(false);
+    }
   }
 
-  if (gameLoading || playersLoading || picksLoading) {
-    return React.createElement('div', { className: 'loader' }, React.createElement('div', { className: 'spinner' }))
+  // Build player picks for captain grid
+  const allMyPlayerPicks = useMemo(() => {
+    const fromExisting = existingPlayerPicks.map((pp) => ({
+      api_id: pp.player_api_id,
+      player_api_id: pp.player_api_id,
+      name: pp.player_api_id,
+      position: null,
+      photo_url: null,
+    }));
+    const fromSelected = Object.values(selectedPlayers).flat().map((p) => ({
+      ...p,
+      player_api_id: p.api_id,
+    }));
+    // Merge
+    const map = new Map();
+    [...fromExisting, ...fromSelected].forEach((p) => map.set(String(p.api_id || p.player_api_id), p));
+    return Array.from(map.values());
+  }, [existingPlayerPicks, selectedPlayers]);
+
+  if (gameLoading) {
+    return <div className="loading-center"><div className="spinner" /></div>;
   }
 
   if (!game) {
-    return (
-      <div className="page container" style={{ paddingTop: '2rem' }}>
-        <div className="empty-state"><div className="icon">😕</div><div>Game not found</div></div>
-      </div>
-    )
+    return <div className="page text-center"><p className="text-muted">Game not found.</p></div>;
   }
 
-  if (game.status === 'selecting_captain') {
-    var myPlayerPicks = playerPicks.filter(function(pp) { return pp.game_player_id === (myPlayer ? myPlayer.id : null) })
-    return (
-      <div className="page">
-        <div style={{ padding: '1rem', borderBottom: '1px solid var(--line)' }}>
-          <h3>Captain Selection</h3>
-          <p className="text-sm text-muted">This player earns 2x all their points</p>
-        </div>
-        <div style={{ paddingTop: '1rem', paddingBottom: '6rem' }}>
-          <CaptainGrid
-            playerPicks={myPlayerPicks}
-            captainPickId={captainPickId}
-            onSelectCaptain={handleSelectCaptain}
-            players={dbPlayers}
-          />
-          {captainPickId && (
-            <div style={{ padding: '1rem' }}>
-              <div className="card card-gold text-center">
-                <div className="text-sm text-gold font-semibold">Captain selected!</div>
-                <div className="text-xs text-muted mt-1">Waiting for others...</div>
-              </div>
-            </div>
-          )}
-        </div>
-        {unread.map(function(n) { return <PokeToast key={n.id} message={n.message} onDismiss={function() { dismiss(n.id) }} /> })}
-      </div>
-    )
-  }
-
-  if (game.status === 'selecting_players') {
-    var activeTeamInfo = teams.find(function(t) { return t.api_id === (activeTeamPick ? activeTeamPick.team_api_id : null) })
-    var alreadyPicked = activeTeamPick ? playerPicks.filter(function(pp) { return pp.draft_pick_id === activeTeamPick.id }) : []
-    var pickedPositions = new Set(alreadyPicked.map(function(pp) { return pp.position }))
-    var allDone = myPicks.length > 0 && myPicks.every(function(pick) {
-      var pp = playerPicks.filter(function(p) { return p.draft_pick_id === pick.id })
-      return pp.length >= 3
-    })
-
-    return (
-      <div className="page">
-        <div style={{ padding: '1rem', borderBottom: '1px solid var(--line)' }}>
-          <h3>Select Your Players</h3>
-          <p className="text-sm text-muted">1 FWD + 1 MID + 1 DEF per team</p>
-        </div>
-        {allDone ? (
-          <div className="container" style={{ paddingTop: '2rem' }}>
-            <div className="card card-gold text-center">
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>All done!</div>
-              <div className="text-sm text-muted mt-1">Waiting for others to finish...</div>
-            </div>
-          </div>
-        ) : (
-          <>
-            {activeTeamPick && (
-              <div style={{ padding: '0.75rem 1rem', background: 'var(--navy-2)', borderBottom: '1px solid var(--line)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  {activeTeamInfo && activeTeamInfo.logo_url && (
-                    <img src={activeTeamInfo.logo_url} alt="" style={{ width: '1.5rem', height: '1.5rem', objectFit: 'contain' }} />
-                  )}
-                  <span className="font-semibold">{activeTeamInfo ? activeTeamInfo.name : 'Team'}</span>
-                </div>
-                <div className="flex gap-2">
-                  {POSITIONS.map(function(pos) {
-                    return (
-                      <button
-                        key={pos}
-                        className={'btn btn-sm' + (activePosition === pos ? ' btn-primary' : pickedPositions.has(pos) ? ' btn-secondary' : ' btn-ghost')}
-                        onClick={function() { if (!pickedPositions.has(pos)) setActivePosition(pos) }}
-                        disabled={pickedPositions.has(pos)}
-                      >
-                        {pickedPositions.has(pos) ? ('done ' + pos) : pos}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            <div style={{ padding: '1rem', paddingBottom: '6rem' }}>
-              {playersForPosition.length === 0 ? (
-                <div className="empty-state">
-                  <div className="icon">😕</div>
-                  <div className="text-sm">No {activePosition} players found</div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {playersForPosition.map(function(p) {
-                    return (
-                      <PlayerCard
-                        key={p.id}
-                        player={p}
-                        selected={selectedPlayerByPos[activePosition] && selectedPlayerByPos[activePosition].api_id === p.api_id}
-                        onClick={function(pl) { setSelectedPlayerByPos(function(prev) { var n = Object.assign({}, prev); n[activePosition] = pl; return n }) }}
-                        disabled={pickedPlayerApiIds.has(p.api_id) && !(selectedPlayerByPos[activePosition] && selectedPlayerByPos[activePosition].api_id === p.api_id)}
-                      />
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-            {selectedPlayerByPos[activePosition] && (
-              <div className="confirm-bar visible">
-                <div style={{ flex: 1 }}>
-                  <div className="text-sm text-muted">Selected {activePosition}</div>
-                  <div className="font-semibold">{selectedPlayerByPos[activePosition].name}</div>
-                </div>
-                <button className="btn btn-primary" onClick={handleSavePlayer} disabled={savingPlayer}>
-                  {savingPlayer ? 'Saving...' : 'Confirm'}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-        {unread.map(function(n) { return <PokeToast key={n.id} message={n.message} onDismiss={function() { dismiss(n.id) }} /> })}
-      </div>
-    )
-  }
+  const status = game.status;
 
   return (
-    <div className="page">
-      <div style={{ padding: '0.75rem 1rem', background: 'var(--navy-2)', borderBottom: '1px solid var(--line)' }}>
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="font-semibold text-sm">
-              Pick {game.current_pick_number} of {game.total_picks}
-            </div>
-            <div className="text-xs text-muted">
-              {isMyTurn ? (
-                <span style={{ color: 'var(--gold)', fontWeight: 700 }}>Your turn!</span>
-              ) : currentPicker ? (
-                'Waiting for ' + currentPicker.name + '...'
-              ) : 'Draft starting...'}
-            </div>
-          </div>
-          <span className={'badge pot-' + currentPot}>Pot {currentPot}</span>
+    <div className="page container">
+      {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h2 style={{ color: 'var(--gold)' }}>
+            {status === 'drafting_teams' && '🏳️ Team Draft'}
+            {status === 'selecting_players' && '👤 Pick Players'}
+            {status === 'selecting_captain' && '👑 Choose Captain'}
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            {players.length} players · {picks.length} picks made
+          </p>
         </div>
-        <div className="progress-bar" style={{ marginTop: '0.5rem' }}>
-          <div className="progress-fill" style={{ width: (((game.current_pick_number - 1) / (game.total_picks || 1)) * 100) + '%' }} />
-        </div>
+        {isHost && (
+          <button className="btn btn-secondary btn-sm" onClick={handleAdvancePhase}>
+            Advance Phase →
+          </button>
+        )}
       </div>
 
-      <SnakeOrderBar players={players} currentPickerIndex={currentPickerIndex} myPlayerId={myToken} />
+      {/* PHASE: drafting_teams */}
+      {status === 'drafting_teams' && (
+        <>
+          <SnakeOrderBar
+            players={players}
+            currentPickerIndex={currentPickerIdx}
+            myPlayerId={myPlayerId}
+          />
 
-      <div style={{ paddingBottom: selectedTeam ? '9rem' : '5rem', overflowY: 'auto' }}>
-        {isHost && (
-          <details style={{ borderBottom: '1px solid var(--line)' }}>
-            <summary style={{ padding: '0.75rem 1rem', cursor: 'pointer', color: 'var(--muted)', fontSize: '0.8125rem', fontWeight: 600 }}>
-              Host Dashboard
-            </summary>
-            <HostDashboard players={players} picks={picks} currentPicker={currentPicker} onPoke={handlePoke} teams={teams} />
-          </details>
-        )}
-
-        {[1, 2, 3, 4].map(function(pot) {
-          return (
-            <div key={pot} className="pot-section" style={{ padding: '0 1rem' }}>
-              <div className="pot-header" style={{ paddingTop: '1rem' }}>
-                <span className={'badge pot-' + pot}>Pot {pot}</span>
-                <span className="text-xs text-muted">
-                  {pot < currentPot ? 'Complete' : pot === currentPot ? 'Current' : 'Upcoming'}
-                </span>
+          <div style={{ marginBottom: 16 }}>
+            {draftComplete ? (
+              <div
+                style={{
+                  background: 'rgba(68,204,136,0.1)',
+                  border: '1px solid var(--success)',
+                  borderRadius: 8,
+                  padding: '10px 16px',
+                  color: 'var(--success)',
+                  fontSize: '0.9rem',
+                }}
+              >
+                ✅ Draft complete! Host can advance to player selection.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(5.5rem, 1fr))', gap: '0.5rem' }}>
-                {(teamsByPot[pot] || []).map(function(team) {
-                  var taken = !!takenByMap[team.api_id]
+            ) : isMyTurn ? (
+              <div
+                style={{
+                  background: 'rgba(255,215,0,0.08)',
+                  border: '1px solid var(--gold)',
+                  borderRadius: 8,
+                  padding: '10px 16px',
+                  color: 'var(--gold)',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                }}
+              >
+                ⭐ It's your turn! Pick #{picks.length + 1}
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  borderRadius: 8,
+                  padding: '10px 16px',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.9rem',
+                }}
+              >
+                Waiting for {currentPicker?.player_name || 'player'} to pick...
+              </div>
+            )}
+          </div>
+
+          {isHost && (
+            <div style={{ marginBottom: 20 }}>
+              <HostDashboard
+                players={players}
+                picks={picks}
+                currentPickerIndex={currentPickerIdx}
+                onPoke={handlePoke}
+                teams={teams}
+              />
+            </div>
+          )}
+
+          <div style={{ marginBottom: 20 }}>
+            <SquadBuilder picks={picks} teams={teams} myPlayerId={myPlayerId} />
+          </div>
+
+          <h3 style={{ marginBottom: 12 }}>All Teams</h3>
+          {[1, 2, 3, 4].map((pot) => {
+            const potTeams = teams.filter((t) => t.pot === pot);
+            if (potTeams.length === 0) return null;
+            return (
+              <div key={pot} style={{ marginBottom: 20 }}>
+                <div
+                  style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: 'var(--text-muted)',
+                    marginBottom: 8,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  Pot {pot}
+                </div>
+                <div className="team-grid">
+                  {potTeams.map((team) => {
+                    const taken = takenTeamIds.has(String(team.api_id));
+                    const takenBy = taken ? getTakenBy(team.api_id) : null;
+                    const isSelected = selectedTeam?.api_id === team.api_id;
+                    return (
+                      <TeamCard
+                        key={team.api_id}
+                        team={team}
+                        selected={isSelected}
+                        taken={taken}
+                        takenBy={takenBy}
+                        disabled={!isMyTurn || draftComplete}
+                        onClick={(t) => {
+                          if (isMyTurn && !taken) {
+                            setSelectedTeam(isSelected ? null : t);
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          <ConfirmBar
+            selectedTeam={selectedTeam}
+            onConfirm={handleConfirmPick}
+            onCancel={() => setSelectedTeam(null)}
+          />
+        </>
+      )}
+
+      {/* PHASE: selecting_players */}
+      {status === 'selecting_players' && (
+        <>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: '0.9rem' }}>
+            Pick {PLAYERS_PER_TEAM} players from each of your {myTeams.length} teams.
+          </p>
+
+          {myTeams.length === 0 ? (
+            <div className="empty-state">You have no drafted teams.</div>
+          ) : (
+            <>
+              <div className="tabs" style={{ marginBottom: 20 }}>
+                {myTeams.map((team) => {
+                  const selCount = (selectedPlayers[team.api_id] || []).length;
+                  const existing = existingPlayerPicks.filter(
+                    (pp) => String(pp.team_api_id) === String(team.api_id)
+                  ).length;
+                  const total = selCount + existing;
                   return (
-                    <TeamCard
-                      key={team.api_id || team.id}
-                      team={team}
-                      selected={selectedTeam && selectedTeam.api_id === team.api_id}
-                      taken={taken}
-                      takenBy={taken ? takenByMap[team.api_id] : null}
-                      onClick={isMyTurn ? function(t) { setSelectedTeam(t) } : null}
-                      disabled={!isMyTurn || taken}
-                    />
-                  )
+                    <button
+                      key={team.api_id}
+                      className={`tab ${activeTeamTab === team.api_id ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveTeamTab(team.api_id);
+                        loadSquadForTeam(team.api_id);
+                      }}
+                    >
+                      {team.name}
+                      {total > 0 && (
+                        <span
+                          style={{
+                            marginLeft: 4,
+                            fontSize: '0.7rem',
+                            color: total >= PLAYERS_PER_TEAM ? 'var(--success)' : 'var(--gold)',
+                          }}
+                        >
+                          ({total}/{PLAYERS_PER_TEAM})
+                        </span>
+                      )}
+                    </button>
+                  );
                 })}
               </div>
-            </div>
-          )
-        })}
-      </div>
 
-      <ConfirmBar selectedTeam={selectedTeam} onConfirm={handleConfirmTeamPick} onCancel={function() { setSelectedTeam(null) }} />
+              {activeTeamTab && (
+                <div>
+                  {!squadPlayers[activeTeamTab] ? (
+                    <div className="loading-center"><div className="spinner" /></div>
+                  ) : squadPlayers[activeTeamTab].length === 0 ? (
+                    <div className="empty-state">No players found for this team.</div>
+                  ) : (
+                    <div className="player-grid">
+                      {squadPlayers[activeTeamTab].map((player) => {
+                        const isSelected = (selectedPlayers[activeTeamTab] || []).some(
+                          (p) => String(p.api_id) === String(player.api_id)
+                        );
+                        const existingPick = existingPlayerPicks.find(
+                          (pp) => String(pp.player_api_id) === String(player.api_id)
+                        );
+                        return (
+                          <PlayerCard
+                            key={player.api_id}
+                            player={player}
+                            selected={isSelected || Boolean(existingPick)}
+                            onClick={() => {
+                              if (!existingPick) togglePlayer(activeTeamTab, player);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
-      {unread.map(function(n) { return <PokeToast key={n.id} message={n.message} onDismiss={function() { dismiss(n.id) }} /> })}
+              {!activeTeamTab && (
+                <div className="empty-state">Select a team tab above to pick players.</div>
+              )}
+
+              <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSavePlayers}
+                  disabled={savingPlayers}
+                >
+                  {savingPlayers ? 'Saving...' : 'Save Player Picks'}
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* PHASE: selecting_captain */}
+      {status === 'selecting_captain' && (
+        <>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: '0.9rem' }}>
+            Choose one player as your captain. They'll earn double points!
+          </p>
+          {allMyPlayerPicks.length === 0 ? (
+            <div className="empty-state">No players picked yet.</div>
+          ) : (
+            <CaptainGrid
+              playerPicks={allMyPlayerPicks}
+              captainPickId={captainId}
+              onSelectCaptain={(id) => setCaptainId(id)}
+            />
+          )}
+          <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSaveCaptain}
+              disabled={!captainId || savingCaptain}
+            >
+              {savingCaptain ? 'Saving...' : 'Confirm Captain'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
-  )
+  );
 }
