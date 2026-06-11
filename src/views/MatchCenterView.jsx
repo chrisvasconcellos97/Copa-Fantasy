@@ -1,167 +1,100 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-import { getSession } from '../lib/session';
-import FixtureCard from '../components/FixtureCard';
-import EventTicker from '../components/EventTicker';
+import { supabase } from '../lib/supabase.js';
+import { getSession } from '../lib/session.js';
+import FixtureCard from '../components/FixtureCard.jsx';
+import EventTicker from '../components/EventTicker.jsx';
 
 function groupByDate(fixtures) {
   const groups = {};
   for (const f of fixtures) {
-    const date = f.kickoff_at
-      ? new Date(f.kickoff_at).toLocaleDateString('en-US', {
-          weekday: 'long', month: 'long', day: 'numeric',
-        })
-      : 'TBD';
+    const date = f.kickoff_at ? new Date(f.kickoff_at).toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Unknown Date';
     if (!groups[date]) groups[date] = [];
     groups[date].push(f);
   }
   return groups;
 }
 
+const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'];
+
 export default function MatchCenterView() {
-  const session = getSession();
   const [fixtures, setFixtures] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [myTeamApiIds, setMyTeamApiIds] = useState([]);
-  const [myPlayerApiIds, setMyPlayerApiIds] = useState([]);
-  const [expandedFixtureId, setExpandedFixtureId] = useState(null);
-  const [teams, setTeams] = useState([]);
+  const [expandedFixture, setExpandedFixture] = useState(null);
+  const session = getSession();
 
   useEffect(() => {
-    async function load() {
-      const [fixturesRes, teamsRes] = await Promise.all([
-        supabase.from('fixtures').select('*').order('kickoff_at'),
-        supabase.from('teams').select('api_id, name, logo_url'),
-      ]);
+    let mounted = true;
 
-      const teamsList = teamsRes.data || [];
-      setTeams(teamsList);
-
-      // Enrich fixtures with team names and logos
-      const enriched = (fixturesRes.data || []).map((f) => {
-        const home = teamsList.find((t) => t.api_id === f.home_team_api_id);
-        const away = teamsList.find((t) => t.api_id === f.away_team_api_id);
-        return {
-          ...f,
-          home_team_name: home?.name || f.home_team_api_id,
-          home_logo_url: home?.logo_url || null,
-          away_team_name: away?.name || f.away_team_api_id,
-          away_logo_url: away?.logo_url || null,
-        };
-      });
-      setFixtures(enriched);
-
-      // Load my teams/players if logged in
-      if (session?.playerId) {
-        const [draftPicksRes, playerPicksRes] = await Promise.all([
-          supabase
-            .from('draft_picks')
-            .select('team_api_id')
-            .eq('game_player_id', session.playerId),
-          supabase
-            .from('player_picks')
-            .select('player_api_id')
-            .eq('game_player_id', session.playerId),
-        ]);
-        setMyTeamApiIds((draftPicksRes.data || []).map((p) => p.team_api_id));
-        setMyPlayerApiIds((playerPicksRes.data || []).map((p) => p.player_api_id));
-      }
-
-      // Load recent events
-      const { data: eventsData } = await supabase
-        .from('match_events')
+    async function loadFixtures() {
+      const { data } = await supabase
+        .from('fixtures')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200);
-      setEvents(eventsData || []);
-
-      setLoading(false);
+        .order('kickoff_at', { ascending: true });
+      if (mounted) {
+        setFixtures(data || []);
+        setLoading(false);
+      }
     }
 
-    load();
+    async function loadEvents() {
+      const { data } = await supabase
+        .from('match_events')
+        .select('*')
+        .order('minute', { ascending: true });
+      if (mounted) setEvents(data || []);
+    }
 
-    // Realtime subscriptions
+    loadFixtures();
+    loadEvents();
+
     const fixtureChannel = supabase
       .channel('fixtures-live')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'fixtures' },
-        () => load()
-      )
-      .subscribe();
-
-    const eventsChannel = supabase
-      .channel('events-live')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'match_events' },
-        (payload) => {
-          setEvents((prev) => [payload.new, ...prev]);
-        }
-      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'fixtures' }, payload => {
+        if (mounted) setFixtures(prev => prev.map(f => f.id === payload.new.id ? payload.new : f));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fixtures' }, payload => {
+        if (mounted) setFixtures(prev => [...prev, payload.new]);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_events' }, payload => {
+        if (mounted) setEvents(prev => [...prev, payload.new]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'match_events' }, payload => {
+        if (mounted) setEvents(prev => prev.map(e => e.id === payload.new.id ? payload.new : e));
+      })
       .subscribe();
 
     return () => {
+      mounted = false;
       supabase.removeChannel(fixtureChannel);
-      supabase.removeChannel(eventsChannel);
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="loading-page">
-        <div className="loading-spinner" />
-        <span>Loading matches...</span>
-      </div>
-    );
-  }
-
-  const liveFixtures = fixtures.filter(
-    (f) => f.status === 'live' || f.status === '1H' || f.status === '2H' || f.status === 'HT'
-  );
-  const byDate = groupByDate(fixtures);
-  const dates = Object.keys(byDate);
+  const grouped = groupByDate(fixtures);
+  const liveFixtures = fixtures.filter(f => LIVE_STATUSES.includes(f.status));
 
   return (
-    <div className="page">
+    <div className="page-wide">
       <h1 className="page-title">Match Center</h1>
 
-      {/* Live section */}
       {liveFixtures.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="live-dot">LIVE</span>
-            <span className="font-semibold">Live Matches</span>
+        <div style={{ marginBottom: 32 }}>
+          <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="badge badge-live">LIVE</span>
+            Live Matches
           </div>
-          <div className="grid grid-2" style={{ gap: 16 }}>
-            {liveFixtures.map((fixture) => {
-              const fixtureEvents = events.filter(
-                (e) => e.fixture_api_id === fixture.api_id || e.fixture_api_id === fixture.id
-              );
-              const isExpanded = expandedFixtureId === fixture.id;
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {liveFixtures.map(fixture => {
+              const fixtureEvents = events.filter(e => e.fixture_api_id === fixture.api_id);
               return (
                 <div key={fixture.id}>
-                  <div
-                    onClick={() => setExpandedFixtureId(isExpanded ? null : fixture.id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <FixtureCard
-                      fixture={fixture}
-                      myTeamApiIds={myTeamApiIds}
-                      isLive
-                    />
+                  <div onClick={() => setExpandedFixture(expandedFixture === fixture.id ? null : fixture.id)}
+                    style={{ cursor: 'pointer' }}>
+                    <FixtureCard fixture={fixture} myTeamApiIds={[]} isLive />
                   </div>
-                  {isExpanded && (
-                    <div className="card card-sm mt-2">
-                      <div className="text-xs text-muted mb-2" style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Match Events
-                      </div>
-                      <EventTicker
-                        events={fixtureEvents}
-                        myPlayerApiIds={myPlayerApiIds}
-                        myTeamApiIds={myTeamApiIds}
-                      />
+                  {expandedFixture === fixture.id && (
+                    <div style={{ marginTop: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
+                      <EventTicker events={fixtureEvents} myPlayerApiIds={[]} myTeamApiIds={[]} />
                     </div>
                   )}
                 </div>
@@ -171,34 +104,38 @@ export default function MatchCenterView() {
         </div>
       )}
 
-      {/* All fixtures by date */}
-      {dates.length === 0 ? (
+      {loading ? (
+        <div className="loading"><div className="spinner" /></div>
+      ) : fixtures.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state__icon">📅</div>
-          <div className="empty-state__title">No fixtures yet</div>
-          <p className="text-muted text-sm">Run the backfill script to load fixtures</p>
+          <div className="empty-state__text">No fixtures scheduled yet</div>
         </div>
       ) : (
-        dates.map((date) => (
-          <div key={date} className="mb-6">
-            <div className="pot-header mb-3">
-              <span className="pot-label">{date}</span>
-              <div className="divider" style={{ flex: 1, margin: '0 12px' }} />
-            </div>
-            <div className="grid grid-2" style={{ gap: 12 }}>
-              {byDate[date].map((fixture) => (
-                <FixtureCard
-                  key={fixture.id}
-                  fixture={fixture}
-                  myTeamApiIds={myTeamApiIds}
-                  isLive={
-                    fixture.status === 'live' ||
-                    fixture.status === '1H' ||
-                    fixture.status === '2H' ||
-                    fixture.status === 'HT'
-                  }
-                />
-              ))}
+        Object.entries(grouped).map(([date, dayFixtures]) => (
+          <div key={date} style={{ marginBottom: 32 }}>
+            <div className="section-header">{date}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {dayFixtures.map(fixture => {
+                const isLive = LIVE_STATUSES.includes(fixture.status);
+                return (
+                  <div key={fixture.id}>
+                    <div onClick={() => setExpandedFixture(expandedFixture === fixture.id ? null : fixture.id)}
+                      style={{ cursor: 'pointer' }}>
+                      <FixtureCard fixture={fixture} myTeamApiIds={[]} isLive={isLive} />
+                    </div>
+                    {expandedFixture === fixture.id && (
+                      <div style={{ marginTop: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
+                        <EventTicker
+                          events={events.filter(e => e.fixture_api_id === fixture.api_id)}
+                          myPlayerApiIds={[]}
+                          myTeamApiIds={[]}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))
