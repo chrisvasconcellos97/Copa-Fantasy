@@ -1,6 +1,38 @@
 import React from 'react';
 
+const FLAG_MAP = {
+  'Mexico': '🇲🇽', 'Canada': '🇨🇦', 'USA': '🇺🇸', 'United States': '🇺🇸',
+  'Argentina': '🇦🇷', 'Brazil': '🇧🇷', 'France': '🇫🇷', 'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  'Germany': '🇩🇪', 'Portugal': '🇵🇹', 'Netherlands': '🇳🇱', 'Spain': '🇪🇸',
+  'Belgium': '🇧🇪', 'Croatia': '🇭🇷', 'Morocco': '🇲🇦', 'Colombia': '🇨🇴',
+  'Uruguay': '🇺🇾', 'Switzerland': '🇨🇭', 'Japan': '🇯🇵', 'Senegal': '🇸🇳',
+  'Iran': '🇮🇷', 'South Korea': '🇰🇷', 'Ecuador': '🇪🇨', 'Austria': '🇦🇹',
+  'Australia': '🇦🇺', 'Norway': '🇳🇴', 'Panama': '🇵🇦', 'Egypt': '🇪🇬',
+  'Algeria': '🇩🇿', 'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Paraguay': '🇵🇾', 'Tunisia': '🇹🇳',
+  'Ivory Coast': '🇨🇮', "Côte d'Ivoire": '🇨🇮', 'Uzbekistan': '🇺🇿', 'Qatar': '🇶🇦',
+  'Saudi Arabia': '🇸🇦', 'South Africa': '🇿🇦', 'Jordan': '🇯🇴', 'Cape Verde': '🇨🇻',
+  'Ghana': '🇬🇭', 'Curaçao': '🇨🇼', 'Haiti': '🇭🇹', 'New Zealand': '🇳🇿',
+  'Bosnia & Herzegovina': '🇧🇦', 'Bosnia and Herzegovina': '🇧🇦', 'Sweden': '🇸🇪',
+  'Türkiye': '🇹🇷', 'Turkey': '🇹🇷', 'Czechia': '🇨🇿', 'Czech Republic': '🇨🇿',
+  'DR Congo': '🇨🇩', 'Iraq': '🇮🇶', 'Venezuela': '🇻🇪', 'Chile': '🇨🇱',
+  'Peru': '🇵🇪', 'Nigeria': '🇳🇬', 'Cameroon': '🇨🇲', 'Mali': '🇲🇱',
+  'Kenya': '🇰🇪', 'Indonesia': '🇮🇩', 'Thailand': '🇹🇭', 'India': '🇮🇳',
+  'China': '🇨🇳', 'Russia': '🇷🇺', 'Ukraine': '🇺🇦', 'Poland': '🇵🇱',
+  'Romania': '🇷🇴', 'Hungary': '🇭🇺', 'Slovakia': '🇸🇰', 'Serbia': '🇷🇸',
+  'Denmark': '🇩🇰', 'Finland': '🇫🇮', 'Greece': '🇬🇷', 'Italy': '🇮🇹',
+  'Wales': '🏴󠁧󠁢󠁷󠁬󠁳󠁿', 'Northern Ireland': '🇬🇧', 'Ireland': '🇮🇪',
+};
+
+function getFlag(name) {
+  if (!name) return null;
+  if (FLAG_MAP[name]) return FLAG_MAP[name];
+  // Try partial match
+  const key = Object.keys(FLAG_MAP).find(k => name.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(name.toLowerCase()));
+  return key ? FLAG_MAP[key] : null;
+}
+
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
+  const flag = getFlag(team.name);
   const handleClick = () => {
     if (disabled || taken) return;
     if (onClick) onClick(team);
@@ -71,15 +103,15 @@ export default function TeamCard({ team, selected, taken, takenBy, onClick, disa
               width: 48,
               height: 48,
               borderRadius: '50%',
-              background: 'var(--border)',
+              background: flag ? 'transparent' : 'var(--border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.2rem',
+              fontSize: flag ? '2.2rem' : '1.2rem',
               filter: taken ? 'grayscale(100%) brightness(0.4)' : 'none',
             }}
           >
-            ⚽
+            {flag || '⚽'}
           </div>
         )}
       </div>
