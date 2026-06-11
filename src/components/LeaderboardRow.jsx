@@ -1,131 +1,148 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-/**
- * LeaderboardRow – collapsible leaderboard entry.
- *
- * Props:
- *   rank          number
- *   player        { id, player_name, is_host }
- *   score         { total_points, breakdown } | null
- *   picks         Array<{team_api_id}> – draft_picks for this player
- *   playerPicks   Array<player objects> – player_picks for this player
- *   captainPickId string – captain player_api_id
- *   teams         Array<team objects>
- *   players       Array<player objects> (squad)
- *   isExpanded    boolean
- *   onToggle      function
- *   isHost        boolean
- *   onOverride    function(gamePlayerId, newTotal)
- */
+function rankClass(rank) {
+  if (rank === 1) return 'rank-1';
+  if (rank === 2) return 'rank-2';
+  if (rank === 3) return 'rank-3';
+  return '';
+}
+
+function rankEmoji(rank) {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return `#${rank}`;
+}
+
 export default function LeaderboardRow({
   rank,
   player,
   score,
-  picks = [],
-  playerPicks = [],
+  picks,
+  playerPicks,
   captainPickId,
-  teams = [],
-  players = [],
+  teams,
+  players,
   isExpanded,
   onToggle,
   isHost,
   onOverride,
 }) {
   const [overrideVal, setOverrideVal] = useState('');
+  const [overrideDesc, setOverrideDesc] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const rankClass = rank === 1 ? 'top1' : rank === 2 ? 'top2' : rank === 3 ? 'top3' : '';
-  const totalPts = score?.total_points ?? 0;
-  const breakdown = score?.breakdown || {};
+  const myTeamIds = picks
+    .filter((p) => p.game_player_id === player.id)
+    .map((p) => p.team_api_id);
 
-  const myTeams = picks
-    .map((p) => teams.find((t) => t.api_id === p.team_api_id))
+  const myTeams = myTeamIds
+    .map((tid) => teams.find((t) => t.api_id === tid))
     .filter(Boolean);
 
-  const captain = players.find((p) => p.api_id === captainPickId);
+  const myPlayerPicks = (playerPicks || []).filter((pp) => pp.game_player_id === player.id);
+  const myPlayers = myPlayerPicks
+    .map((pp) => players.find((pl) => pl.api_id === pp.player_api_id))
+    .filter(Boolean);
+
+  const captain = players.find((pl) => pl.api_id === captainPickId);
 
   async function handleOverride() {
     const pts = parseInt(overrideVal, 10);
     if (isNaN(pts)) return;
     setSaving(true);
-    if (onOverride) await onOverride(player.id, pts);
-    setOverrideVal('');
-    setSaving(false);
+    try {
+      await onOverride(player.id, pts, overrideDesc);
+      setOverrideVal('');
+      setOverrideDesc('');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="leaderboard-row">
-      <div className="lb-header" onClick={onToggle}>
-        <span className={`lb-rank ${rankClass}`}>
-          {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}
-        </span>
-        <span className="lb-name">
-          {player?.player_name || 'Unknown'}
-          {player?.is_host && <span className="badge badge-gold" style={{ marginLeft: '0.4rem', fontSize: '0.6rem' }}>HOST</span>}
-        </span>
-        {captain && (
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            👑 {captain.name}
-          </span>
-        )}
-        <span className="lb-pts">{totalPts} pts</span>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{isExpanded ? '▲' : '▼'}</span>
+      <div className="leaderboard-row-header" onClick={onToggle}>
+        <span className={`leaderboard-rank ${rankClass(rank)}`}>{rankEmoji(rank)}</span>
+        <div style={{ flex: 1 }}>
+          <div className="leaderboard-name">{player.player_name}</div>
+          {captain && (
+            <div className="text-xs text-muted mt-4">C: {captain.name}</div>
+          )}
+        </div>
+        <span className="leaderboard-points">{score?.total_points ?? 0} pts</span>
+        <span className="text-muted text-sm" style={{ marginLeft: 8 }}>{isExpanded ? '▲' : '▼'}</span>
       </div>
 
       {isExpanded && (
-        <div className="lb-body animate-fade-in">
-          {/* Teams */}
+        <div className="leaderboard-expanded fade-in">
           {myTeams.length > 0 && (
-            <div style={{ marginBottom: '0.75rem' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Teams</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div className="mb-12">
+              <div className="text-xs text-muted font-600 mb-8">TEAMS</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {myTeams.map((team) => (
-                  <div key={team.api_id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
-                    {team.logo_url && <img src={team.logo_url} alt="" style={{ width: 20, height: 20, objectFit: 'contain' }} />}
-                    <span>{team.name}</span>
-                    {breakdown[team.api_id] != null && (
-                      <span style={{ color: 'var(--gold)', fontWeight: 700 }}>+{breakdown[team.api_id]}</span>
+                  <div key={team.api_id} className="chip">
+                    {team.logo_url && (
+                      <img src={team.logo_url} alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} />
                     )}
+                    {team.name}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Players */}
-          {playerPicks.length > 0 && (
-            <div style={{ marginBottom: '0.75rem' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Players</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {playerPicks.map((pl) => (
-                  <div key={pl.api_id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', padding: '0.2rem 0.5rem', background: '#0e0e16', borderRadius: '999px', border: '1px solid var(--border)' }}>
-                    {pl.api_id === captainPickId && <span>👑</span>}
-                    <span>{pl.name}</span>
-                    {breakdown[`player_${pl.api_id}`] != null && (
-                      <span style={{ color: 'var(--gold)', fontWeight: 700 }}>+{breakdown[`player_${pl.api_id}`]}</span>
-                    )}
+          {myPlayers.length > 0 && (
+            <div className="mb-12">
+              <div className="text-xs text-muted font-600 mb-8">PLAYERS</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {myPlayers.map((pl) => (
+                  <div key={pl.api_id} className={`chip${pl.api_id === captainPickId ? ' chip-mine' : ''}`}>
+                    {pl.api_id === captainPickId && '👑 '}
+                    {pl.name}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Host override */}
+          {score?.breakdown && Object.keys(score.breakdown).length > 0 && (
+            <div className="mb-12">
+              <div className="text-xs text-muted font-600 mb-8">SCORE BREAKDOWN</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {Object.entries(score.breakdown).map(([key, val]) => (
+                  <div key={key} className="row-between text-sm">
+                    <span className="text-muted">{key.replace(/_/g, ' ')}</span>
+                    <span className={val >= 0 ? 'text-success' : 'text-danger'}>{val >= 0 ? '+' : ''}{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isHost && (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Override total:</span>
-              <input
-                type="number"
-                className="input"
-                style={{ width: 90 }}
-                value={overrideVal}
-                onChange={(e) => setOverrideVal(e.target.value)}
-                placeholder={String(totalPts)}
-              />
-              <button className="btn btn-secondary btn-sm" onClick={handleOverride} disabled={saving || !overrideVal}>
-                {saving ? 'Saving…' : 'Set'}
-              </button>
+            <div className="card-section mt-12">
+              <div className="text-xs text-muted font-600 mb-8">SCORE OVERRIDE (HOST)</div>
+              <div className="col gap-8">
+                <input
+                  type="number"
+                  className="input"
+                  placeholder="Points adjustment (e.g. +5 or -2)"
+                  value={overrideVal}
+                  onChange={(e) => setOverrideVal(e.target.value)}
+                />
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Reason (optional)"
+                  value={overrideDesc}
+                  onChange={(e) => setOverrideDesc(e.target.value)}
+                />
+                <button className="btn btn-primary btn-sm" onClick={handleOverride} disabled={saving || !overrideVal}>
+                  {saving ? 'Saving...' : 'Apply Override'}
+                </button>
+              </div>
             </div>
           )}
         </div>

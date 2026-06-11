@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.js';
 
 export function useGame(gameId) {
   const [game, setGame] = useState(null);
@@ -10,7 +10,7 @@ export function useGame(gameId) {
 
     let mounted = true;
 
-    async function load() {
+    async function fetchGame() {
       const { data, error } = await supabase
         .from('games')
         .select('*')
@@ -22,7 +22,7 @@ export function useGame(gameId) {
       }
     }
 
-    load();
+    fetchGame();
 
     const channel = supabase
       .channel(`game-${gameId}`)
