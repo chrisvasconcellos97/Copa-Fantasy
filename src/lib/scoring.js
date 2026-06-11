@@ -22,49 +22,43 @@ export const PLAYER_POINTS = {
 };
 
 /**
- * Compute a player's score from an array of match events.
- * Each event should have: { type, detail, player_api_id }
- * Returns { total, breakdown }
+ * Compute total score for a player from their match events array.
+ * Each event: { type, detail }
+ * type: 'Goal', 'Card', 'subst', etc.
+ * detail: 'Normal Goal', 'Yellow Card', 'Red Card', etc.
  */
 export function computePlayerScore(events) {
-  const breakdown = {};
-  let total = 0;
-
-  const add = (key, points) => {
-    breakdown[key] = (breakdown[key] || 0) + points;
-    total += points;
-  };
-
+  if (!events || events.length === 0) return 0;
+  let score = 0;
   for (const event of events) {
     const type = (event.type || '').toLowerCase();
     const detail = (event.detail || '').toLowerCase();
 
     if (type === 'goal') {
-      if (detail !== 'own goal') {
-        add('goal', PLAYER_POINTS.goal);
+      if (!detail.includes('own')) {
+        score += PLAYER_POINTS.goal;
       }
-    } else if (type === 'assist' || detail === 'assist') {
-      add('assist', PLAYER_POINTS.assist);
+    } else if (type === 'assist') {
+      score += PLAYER_POINTS.assist;
     } else if (type === 'card') {
-      if (detail === 'yellow card') {
-        add('yellow_card', PLAYER_POINTS.yellow_card);
-      } else if (detail === 'red card' || detail === 'second yellow') {
-        add('red_card', PLAYER_POINTS.red_card);
+      if (detail.includes('yellow') && !detail.includes('red')) {
+        score += PLAYER_POINTS.yellow_card;
+      } else if (detail.includes('red')) {
+        score += PLAYER_POINTS.red_card;
       }
-    } else if (type === 'motm' || detail === 'man of the match') {
-      add('motm', PLAYER_POINTS.motm);
     } else if (type === 'clean_sheet') {
       if (detail === 'gk') {
-        add('clean_sheet_gk', PLAYER_POINTS.clean_sheet_gk);
+        score += PLAYER_POINTS.clean_sheet_gk;
       } else {
-        add('clean_sheet_def', PLAYER_POINTS.clean_sheet_def);
+        score += PLAYER_POINTS.clean_sheet_def;
       }
+    } else if (type === 'motm') {
+      score += PLAYER_POINTS.motm;
     } else if (type === 'top_scorer') {
-      add('top_scorer', PLAYER_POINTS.top_scorer);
+      score += PLAYER_POINTS.top_scorer;
     } else if (type === 'golden_boot') {
-      add('golden_boot', PLAYER_POINTS.golden_boot);
+      score += PLAYER_POINTS.golden_boot;
     }
   }
-
-  return { total, breakdown };
+  return score;
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase';
 
 export function useGame(gameId) {
   const [game, setGame] = useState(null);
@@ -8,21 +8,21 @@ export function useGame(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let mounted = true;
+    let isMounted = true;
 
-    async function fetchGame() {
+    async function loadGame() {
       const { data, error } = await supabase
         .from('games')
         .select('*')
         .eq('id', gameId)
         .single();
-      if (mounted) {
+      if (isMounted) {
         if (!error) setGame(data);
         setLoading(false);
       }
     }
 
-    fetchGame();
+    loadGame();
 
     const channel = supabase
       .channel(`game-${gameId}`)
@@ -30,13 +30,13 @@ export function useGame(gameId) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         (payload) => {
-          if (mounted) setGame(payload.new);
+          if (isMounted) setGame(payload.new);
         }
       )
       .subscribe();
 
     return () => {
-      mounted = false;
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);

@@ -1,50 +1,47 @@
 /**
- * Generate the full snake draft order as an array of player indices.
+ * Generate snake draft order given player array and total rounds.
+ * Returns array of player indices in pick order.
  * Round 1: 0,1,2,...,n-1
- * Round 2: n-1,...,1,0
- * Round 3: 0,1,...  etc.
- *
- * Returns array of length (numPlayers * totalRounds) containing player indices.
+ * Round 2: n-1,...,1,0  (reversed)
+ * etc.
  */
 export function getSnakeOrder(players, totalRounds) {
-  const n = players.length;
+  if (!players || players.length === 0) return [];
   const order = [];
-  for (let r = 0; r < totalRounds; r++) {
-    const ascending = r % 2 === 0;
-    for (let i = 0; i < n; i++) {
-      order.push(ascending ? i : n - 1 - i);
-    }
+  for (let round = 0; round < totalRounds; round++) {
+    const indices = players.map((_, i) => i);
+    if (round % 2 === 1) indices.reverse();
+    order.push(...indices);
   }
   return order;
 }
 
 /**
- * Given existing picks, players array, and total rounds,
- * returns the index in the players array of who picks next,
- * or null if the draft is complete.
+ * Get the index in `players` array whose turn it is to pick,
+ * given current picks already made.
  */
 export function getCurrentPicker(picks, players, totalRounds) {
   if (!players || players.length === 0) return null;
-  const totalPicks = players.length * totalRounds;
-  if (picks.length >= totalPicks) return null;
   const order = getSnakeOrder(players, totalRounds);
-  return order[picks.length];
+  const pickIndex = picks ? picks.length : 0;
+  if (pickIndex >= order.length) return null;
+  return order[pickIndex];
 }
 
 /**
- * Given a 1-based pick number and a pot size (e.g. 12 teams per pot),
- * returns which pot (1-4) that pick falls into for a 4-round snake.
- * This is a rough approximation useful when players pick 1 team per pot.
+ * Given a 1-based pick number and pot size (teams per pot),
+ * return which pot (1-4) the pick belongs to (based on rounds).
+ * In a 4-pot draft, every `numPlayers` picks advances to next pot.
  */
 export function getPotFromPickNumber(pickNumber, potSize) {
-  return Math.min(4, Math.floor((pickNumber - 1) / potSize) + 1);
+  if (!pickNumber || pickNumber < 1) return 1;
+  return Math.min(4, Math.ceil(pickNumber / potSize));
 }
 
 /**
- * Given a 1-based pick number and number of players,
- * returns which round (1-based) that pick is in.
+ * Get the round number (1-based) for a given pick number.
  */
 export function getRoundFromPickNumber(pickNumber, numPlayers) {
-  if (!numPlayers || numPlayers === 0) return 1;
-  return Math.floor((pickNumber - 1) / numPlayers) + 1;
+  if (!pickNumber || !numPlayers || numPlayers === 0) return 1;
+  return Math.ceil(pickNumber / numPlayers);
 }

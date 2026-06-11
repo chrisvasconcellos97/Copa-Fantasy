@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase';
 
 export function useDraft(gameId) {
   const [picks, setPicks] = useState([]);
@@ -8,21 +8,21 @@ export function useDraft(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let mounted = true;
+    let isMounted = true;
 
-    async function fetchPicks() {
+    async function loadPicks() {
       const { data, error } = await supabase
         .from('draft_picks')
         .select('*')
         .eq('game_id', gameId)
         .order('pick_number', { ascending: true });
-      if (mounted) {
-        if (!error) setPicks(data || []);
+      if (isMounted) {
+        if (!error && data) setPicks(data);
         setLoading(false);
       }
     }
 
-    fetchPicks();
+    loadPicks();
 
     const channel = supabase
       .channel(`draft-picks-${gameId}`)
@@ -30,11 +30,12 @@ export function useDraft(gameId) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (mounted) {
-            setPicks(prev => {
-              const exists = prev.some(p => p.id === payload.new.id);
-              if (exists) return prev;
-              return [...prev, payload.new].sort((a, b) => a.pick_number - b.pick_number);
+          if (isMounted) {
+            setPicks((prev) => {
+              if (prev.find((p) => p.id === payload.new.id)) return prev;
+              const next = [...prev, payload.new];
+              next.sort((a, b) => a.pick_number - b.pick_number);
+              return next;
             });
           }
         }
@@ -42,7 +43,7 @@ export function useDraft(gameId) {
       .subscribe();
 
     return () => {
-      mounted = false;
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);

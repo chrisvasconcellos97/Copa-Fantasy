@@ -1,175 +1,124 @@
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { normalizePosition } from '../lib/constants.js';
+
+function RankDisplay({ rank }) {
+  const cls = rank <= 3 ? `leaderboard-row__rank rank-${rank}` : 'leaderboard-row__rank';
+  const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  return (
+    <span className={cls}>
+      {medals[rank] || `#${rank}`}
+    </span>
+  );
+}
 
 export default function LeaderboardRow({
-  rank,
-  player,
-  score,
-  picks,
-  playerPicks,
-  captainPickId,
-  teams,
-  players,
-  isExpanded,
-  onToggle,
-  isHost,
-  onOverride,
+  rank, player, score, picks, playerPicks, captainPickId,
+  teams, players, isExpanded, onToggle, isHost, onOverride,
 }) {
   const [overrideVal, setOverrideVal] = useState('');
-  const [overrideNote, setOverrideNote] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  const teamMap = {};
-  (teams || []).forEach((t) => { teamMap[t.api_id] = t; });
-  const playerMap = {};
-  (players || []).forEach((p) => { playerMap[p.api_id] = p; });
+  const myTeams = picks
+    ?.filter(p => p.game_player_id === player?.id)
+    .map(p => teams?.find(t => t.api_id === p.team_api_id))
+    .filter(Boolean);
 
-  const myTeamPicks = (picks || []).filter((p) => p.game_player_id === player?.game_player_id || p.game_player_id === player?.id);
-  const myPlayerPicks = (playerPicks || []).filter(
-    (p) => p.game_player_id === player?.game_player_id || p.game_player_id === player?.id
-  );
+  const myPlayerPicks = playerPicks
+    ?.filter(p => p.game_player_id === player?.id)
+    .map(p => players?.find(pl => pl.api_id === p.player_api_id))
+    .filter(Boolean);
 
-  async function handleOverride() {
-    const pts = parseInt(overrideVal, 10);
-    if (isNaN(pts)) return;
-    setSaving(true);
-    if (onOverride) await onOverride(player?.game_player_id || player?.id, pts, overrideNote);
-    setSaving(false);
-    setOverrideVal('');
-    setOverrideNote('');
-  }
+  const captainPlayer = myPlayerPicks?.find(p => p?.api_id === captainPickId);
 
-  const rankClass = rank <= 3 ? `rank-badge rank-${rank}` : 'rank-badge';
-  const playerName = player?.player_name || player?.game_players?.player_name || 'Unknown';
   const totalPoints = score?.total_points ?? 0;
-  const captain = myPlayerPicks.find(
-    (p) => p.player_api_id === captainPickId
-  );
-  const captainPlayer = captain ? playerMap[captain.player_api_id] : null;
+  const breakdown = score?.breakdown || {};
+
+  function handleOverride(e) {
+    e.stopPropagation();
+    if (onOverride && overrideVal !== '') {
+      onOverride(player.id, Number(overrideVal));
+      setOverrideVal('');
+    }
+  }
 
   return (
     <div className="leaderboard-row">
-      <div className="leaderboard-row-header" onClick={onToggle}>
-        <div className={rankClass}>{rank}</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600 }}>{playerName}</div>
+      <div className="leaderboard-row__header" onClick={onToggle} role="button" tabIndex={0}
+        onKeyDown={e => e.key === 'Enter' && onToggle && onToggle()}>
+        <RankDisplay rank={rank} />
+        <span className="leaderboard-row__name">
+          {player?.player_name || 'Unknown'}
+          {player?.is_host && <span className="badge badge-muted" style={{ marginLeft: 8, fontSize: '0.65rem' }}>Host</span>}
           {captainPlayer && (
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            <span style={{ marginLeft: 6, fontSize: '0.8rem', color: 'var(--gold)' }}>
               👑 {captainPlayer.name}
-            </div>
+            </span>
           )}
-        </div>
-        <div className="score-points">{totalPoints} pts</div>
+        </span>
+        <span className="leaderboard-row__points">{totalPoints} pts</span>
         <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{isExpanded ? '▲' : '▼'}</span>
       </div>
 
       {isExpanded && (
-        <div className="leaderboard-row-body">
+        <div className="leaderboard-row__expanded">
           {/* Teams */}
-          {myTeamPicks.length > 0 && (
+          {myTeams && myTeams.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>Teams</div>
+              <div className="section-header">Teams</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {myTeamPicks.map((pick) => {
-                  const team = teamMap[pick.team_api_id];
-                  return (
-                    <div
-                      key={pick.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        background: 'var(--dark-bg)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8,
-                        padding: '4px 10px',
-                        fontSize: '0.82rem',
-                      }}
-                    >
-                      {team?.logo_url && (
-                        <img src={team.logo_url} alt={team.name} style={{ width: 20, height: 20, objectFit: 'contain' }} />
-                      )}
-                      <span>{team?.name || pick.team_api_id}</span>
-                    </div>
-                  );
-                })}
+                {myTeams.map(team => (
+                  <div key={team.api_id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--border)', borderRadius: 6, padding: '4px 10px' }}>
+                    {team.logo_url && (
+                      <img src={team.logo_url} alt={team.name} style={{ width: 20, height: 20, objectFit: 'contain' }}
+                        onError={e => { e.target.style.display = 'none'; }} />
+                    )}
+                    <span style={{ fontSize: '0.8rem' }}>{team.name}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Player picks */}
-          {myPlayerPicks.length > 0 && (
+          {/* Players */}
+          {myPlayerPicks && myPlayerPicks.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>Players</div>
+              <div className="section-header">Players</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {myPlayerPicks.map((pick) => {
-                  const pl = playerMap[pick.player_api_id];
-                  const isCaptain = pick.player_api_id === captainPickId;
-                  const pos = normalizePosition(pl?.position);
-                  return (
-                    <div
-                      key={pick.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        background: isCaptain ? 'rgba(255,215,0,0.1)' : 'var(--dark-bg)',
-                        border: `1px solid ${isCaptain ? 'var(--gold)' : 'var(--border)'}`,
-                        borderRadius: 8,
-                        padding: '4px 10px',
-                        fontSize: '0.82rem',
-                      }}
-                    >
-                      {isCaptain && <span>👑</span>}
-                      <span>{pl?.name || pick.player_api_id}</span>
-                      {pl && <span className={`position-badge pos-${pos}`}>{pos}</span>}
-                    </div>
-                  );
-                })}
+                {myPlayerPicks.map(p => p && (
+                  <span key={p.api_id} style={{ fontSize: '0.8rem', background: 'var(--border)', borderRadius: 6, padding: '4px 10px' }}>
+                    {p.api_id === captainPickId && '👑 '}{p.name}
+                  </span>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Score breakdown */}
-          {score?.breakdown && (
+          {/* Breakdown */}
+          {Object.keys(breakdown).length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>Breakdown</div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>
-                {typeof score.breakdown === 'string'
-                  ? score.breakdown
-                  : JSON.stringify(score.breakdown, null, 2)}
+              <div className="section-header">Score Breakdown</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {Object.entries(breakdown).map(([key, val]) => (
+                  <span key={key} style={{ fontSize: '0.8rem', background: 'var(--border)', borderRadius: 6, padding: '4px 10px' }}>
+                    {key.replace(/_/g, ' ')}: {val > 0 ? '+' : ''}{val}
+                  </span>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Host override */}
-          {isHost && (
-            <div className="override-row">
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', flexShrink: 0 }}>Override pts:</span>
+          {/* Host Override */}
+          {isHost && onOverride && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Override points:</span>
               <input
-                className="input"
                 type="number"
-                placeholder="Points"
-                value={overrideVal}
-                onChange={(e) => setOverrideVal(e.target.value)}
-                style={{ width: 90 }}
-              />
-              <input
                 className="input"
-                type="text"
-                placeholder="Note"
-                value={overrideNote}
-                onChange={(e) => setOverrideNote(e.target.value)}
-                style={{ flex: 1 }}
+                style={{ width: 100 }}
+                value={overrideVal}
+                onChange={e => setOverrideVal(e.target.value)}
+                placeholder={String(totalPoints)}
+                onClick={e => e.stopPropagation()}
               />
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleOverride}
-                disabled={saving || !overrideVal}
-              >
-                {saving ? '...' : 'Set'}
-              </button>
+              <button className="btn btn-sm btn-primary" onClick={handleOverride}>Set</button>
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase';
 
 export function useScores(gameId) {
   const [scores, setScores] = useState([]);
@@ -8,42 +8,57 @@ export function useScores(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let mounted = true;
+    let isMounted = true;
 
-    async function fetchScores() {
+    async function loadScores() {
       const { data, error } = await supabase
         .from('user_scores')
-        .select('*, game_players(player_name, is_host)')
+        .select('*')
         .eq('game_id', gameId)
         .order('total_points', { ascending: false });
-      if (mounted) {
-        if (!error) setScores(data || []);
+      if (isMounted) {
+        if (!error && data) setScores(data);
         setLoading(false);
       }
     }
 
-    fetchScores();
+    loadScores();
 
     const channel = supabase
       .channel(`user-scores-${gameId}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'user_scores', filter: `game_id=eq.${gameId}` },
-        () => {
-          if (mounted) fetchScores();
+        (payload) => {
+          if (isMounted) {
+            setScores((prev) => {
+              const updated = prev.map((s) =>
+                s.id === payload.new.id ? payload.new : s
+              );
+              updated.sort((a, b) => (b.total_points || 0) - (a.total_points || 0));
+              return updated;
+            });
+          }
         }
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'user_scores', filter: `game_id=eq.${gameId}` },
-        () => {
-          if (mounted) fetchScores();
+        (payload) => {
+          if (isMounted) {
+            setScores((prev) => {
+              if (prev.find((s) => s.id === payload.new.id)) return prev;
+              const next = [...prev, payload.new];
+              next.sort((a, b) => (b.total_points || 0) - (a.total_points || 0));
+              return next;
+            });
+          }
         }
       )
       .subscribe();
 
     return () => {
-      mounted = false;
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);

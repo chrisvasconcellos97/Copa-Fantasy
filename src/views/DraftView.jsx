@@ -1,29 +1,32 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useGame } from '../hooks/useGame';
-import { usePlayers } from '../hooks/usePlayers';
-import { useDraft } from '../hooks/useDraft';
-import { useNotifications } from '../hooks/useNotifications';
-import { supabase } from '../lib/supabase';
-import { FALLBACK_POTS } from '../lib/constants';
-import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
-import TeamCard from '../components/TeamCard';
-import ConfirmBar from '../components/ConfirmBar';
-import SnakeOrderBar from '../components/SnakeOrderBar';
-import HostDashboard from '../components/HostDashboard';
-import PokeToast from '../components/PokeToast';
-import SquadBuilder from '../components/SquadBuilder';
-import PlayerCard from '../components/PlayerCard';
-import CaptainGrid from '../components/CaptainGrid';
+import { useGame } from '../hooks/useGame.js';
+import { usePlayers } from '../hooks/usePlayers.js';
+import { useDraft } from '../hooks/useDraft.js';
+import { useNotifications } from '../hooks/useNotifications.js';
+import { getSession } from '../lib/session.js';
+import { supabase } from '../lib/supabase.js';
+import { FALLBACK_POTS } from '../lib/constants.js';
+import { getSnakeOrder, getCurrentPicker } from '../lib/draft.js';
+import TeamCard from '../components/TeamCard.jsx';
+import ConfirmBar from '../components/ConfirmBar.jsx';
+import SnakeOrderBar from '../components/SnakeOrderBar.jsx';
+import HostDashboard from '../components/HostDashboard.jsx';
+import PokeToast from '../components/PokeToast.jsx';
+import SquadBuilder from '../components/SquadBuilder.jsx';
+import PlayerCard from '../components/PlayerCard.jsx';
+import CaptainGrid from '../components/CaptainGrid.jsx';
 
 const TOTAL_ROUNDS = 8;
 
-function getSession() {
-  try {
-    return JSON.parse(localStorage.getItem('copa_session') || '{}');
-  } catch {
-    return {};
+function buildFallbackTeams() {
+  const teams = [];
+  for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
+    for (const name of names) {
+      teams.push({ api_id: name, name, logo_url: null, pot: Number(pot) });
+    }
   }
+  return teams;
 }
 
 export default function DraftView() {
@@ -33,31 +36,28 @@ export default function DraftView() {
   const { players, loading: playersLoading } = usePlayers(gameId);
   const { picks, loading: picksLoading } = useDraft(gameId);
   const session = getSession();
-  const myPlayerId = session.playerId;
-  const isHost = !!session.hostToken;
-
+  const myPlayerId = session?.playerId;
+  const isHost = !!session?.hostToken;
   const { showPoke, dismissPoke, pokeMessage } = useNotifications(myPlayerId);
 
-  // Teams from DB or fallback
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
-
-  // Player selection state
-  const [squadPlayers, setSquadPlayers] = useState({}); // teamApiId -> players[]
-  const [activeTeamTab, setActiveTeamTab] = useState(null);
-  const [selectedPlayers, setSelectedPlayers] = useState([]); // saved player_picks
-  const [tempSelectedPlayers, setTempSelectedPlayers] = useState([]); // current tab selections
-
-  // Captain state
-  const [captainPickId, setCaptainPickId] = useState(null);
-  const [savedCaptain, setSavedCaptain] = useState(null);
-
-  // Team draft state
   const [selectedTeam, setSelectedTeam] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [advancingPhase, setAdvancingPhase] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
-  // Load teams
+  // Player picks phase
+  const [squadPlayers, setSquadPlayers] = useState({});
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [selectedPlayers, setSelectedPlayers] = useState({});
+  const [savedPlayerPicks, setSavedPlayerPicks] = useState([]);
+  const [savingPlayers, setSavingPlayers] = useState(false);
+
+  // Captain phase
+  const [captainId, setCaptainId] = useState(null);
+  const [savedCaptain, setSavedCaptain] = useState(null);
+  const [savingCaptain, setSavingCaptain] = useState(false);
+
+  // Load teams from DB, fall back to constants
   useEffect(() => {
     async function loadTeams() {
       setTeamsLoading(true);
@@ -65,22 +65,14 @@ export default function DraftView() {
       if (!error && data && data.length > 0) {
         setTeams(data);
       } else {
-        // Build fallback teams from FALLBACK_POTS
-        const fallback = [];
-        let apiId = 1;
-        for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
-          names.forEach((name) => {
-            fallback.push({ api_id: apiId++, name, logo_url: null, pot: Number(pot) });
-          });
-        }
-        setTeams(fallback);
+        setTeams(buildFallbackTeams());
       }
       setTeamsLoading(false);
     }
     loadTeams();
   }, []);
 
-  // Load existing player_picks
+  // Load existing player picks
   useEffect(() => {
     if (!gameId || !myPlayerId) return;
     async function loadPlayerPicks() {
@@ -89,12 +81,12 @@ export default function DraftView() {
         .select('*')
         .eq('game_id', gameId)
         .eq('game_player_id', myPlayerId);
-      if (data) setSelectedPlayers(data);
+      if (data) setSavedPlayerPicks(data);
     }
     loadPlayerPicks();
   }, [gameId, myPlayerId, game?.status]);
 
-  // Load captain pick
+  // Load existing captain pick
   useEffect(() => {
     if (!gameId || !myPlayerId) return;
     async function loadCaptain() {
@@ -109,397 +101,361 @@ export default function DraftView() {
     loadCaptain();
   }, [gameId, myPlayerId, game?.status]);
 
-  // Load squad players for a team
-  async function loadSquadForTeam(teamApiId) {
-    if (squadPlayers[teamApiId]) return;
-    const { data } = await supabase
-      .from('players')
-      .select('*')
-      .eq('team_api_id', teamApiId);
-    setSquadPlayers((prev) => ({ ...prev, [teamApiId]: data || [] }));
-  }
-
-  // Navigate on terminal status
+  // Navigate to leaderboard when tournament phase
   useEffect(() => {
-    if (!game) return;
-    if (game.status === 'tournament' || game.status === 'complete') {
-      navigate(`/leaderboard/${gameId}`);
+    if (game && (game.status === 'tournament' || game.status === 'complete')) {
+      navigate(`/leaderboard/${gameId}`, { replace: true });
     }
   }, [game, gameId, navigate]);
 
-  // Set active team tab when entering selecting_players phase
+  // Load squad players for a team
   useEffect(() => {
-    if (game?.status === 'selecting_players' && myTeamPicks.length > 0 && !activeTeamTab) {
-      const firstTeam = myTeamPicks[0]?.team_api_id;
-      setActiveTeamTab(firstTeam);
-      loadSquadForTeam(firstTeam);
-    }
-  }, [game?.status, picks, activeTeamTab]);
+    if (game?.status !== 'selecting_players') return;
+    const myPicks = picks.filter((p) => p.game_player_id === myPlayerId);
+    myPicks.forEach(async (pick) => {
+      if (squadPlayers[pick.team_api_id]) return;
+      const { data } = await supabase
+        .from('players')
+        .select('*')
+        .eq('team_api_id', pick.team_api_id);
+      if (data && data.length > 0) {
+        setSquadPlayers((prev) => ({ ...prev, [pick.team_api_id]: data }));
+      }
+    });
+  }, [game?.status, picks, myPlayerId]);
 
-  const currentPickerIdx = getCurrentPicker(picks, players, TOTAL_ROUNDS);
-  const currentPicker = players[currentPickerIdx];
+  const snakeOrder = useMemo(
+    () => (players.length > 0 ? getSnakeOrder(players, TOTAL_ROUNDS) : []),
+    [players]
+  );
+
+  const currentPicker = useMemo(
+    () => getCurrentPicker(picks, players, TOTAL_ROUNDS),
+    [picks, players]
+  );
+
+  const currentPickerIndex = useMemo(() => {
+    if (!currentPicker) return -1;
+    return players.findIndex((p) => p.id === currentPicker.id);
+  }, [currentPicker, players]);
+
   const isMyTurn = currentPicker?.id === myPlayerId;
 
-  const myTeamPicks = picks.filter((p) => p.game_player_id === myPlayerId);
-  const takenTeamIds = new Set(picks.map((p) => p.team_api_id));
+  const takenTeamMap = useMemo(() => {
+    const map = {};
+    picks.forEach((pick) => {
+      const player = players.find((p) => p.id === pick.game_player_id);
+      map[pick.team_api_id] = player?.player_name || 'Taken';
+    });
+    return map;
+  }, [picks, players]);
 
-  const teamMap = {};
-  teams.forEach((t) => { teamMap[t.api_id] = t; });
-
-  const pickerPlayerMap = {};
-  picks.forEach((pick) => {
-    const player = players.find((pl) => pl.id === pick.game_player_id);
-    if (player) pickerPlayerMap[pick.team_api_id] = player.player_name;
-  });
-
-  // ── Team draft ──
-  async function handleConfirmPick() {
-    if (!selectedTeam || !isMyTurn || submitting) return;
-    setSubmitting(true);
+  async function confirmPick() {
+    if (!selectedTeam || !isMyTurn || confirming) return;
+    setConfirming(true);
     try {
-      const { error } = await supabase.from('draft_picks').insert({
+      await supabase.from('draft_picks').insert({
         game_id: gameId,
         game_player_id: myPlayerId,
         pick_number: picks.length,
         team_api_id: selectedTeam.api_id,
       });
-      if (error) throw error;
       setSelectedTeam(null);
     } catch (err) {
-      console.error('Pick error', err);
+      console.error('Pick failed:', err);
     } finally {
-      setSubmitting(false);
+      setConfirming(false);
     }
   }
 
-  // ── Poke ──
-  async function handlePoke(player) {
-    try {
-      await supabase.from('notifications').insert({
-        game_player_id: player.id,
-        type: 'poke',
-        message: `Hey ${player.player_name}, it's your turn to pick!`,
-        read: false,
-      });
-    } catch (err) {
-      console.error('Poke error', err);
-    }
+  async function handlePoke(targetPlayerId) {
+    await supabase.from('notifications').insert({
+      game_player_id: targetPlayerId,
+      type: 'poke',
+      message: "It's your turn to pick! ⚽",
+      read: false,
+    });
   }
 
-  // ── Phase advance (host only) ──
   async function advancePhase() {
-    if (!isHost || advancingPhase) return;
-    setAdvancingPhase(true);
-    const nextStatus =
-      game.status === 'drafting_teams'
-        ? 'selecting_players'
-        : game.status === 'selecting_players'
-        ? 'selecting_captain'
-        : game.status === 'selecting_captain'
-        ? 'tournament'
-        : null;
-    if (nextStatus) {
-      await supabase.from('games').update({ status: nextStatus }).eq('id', gameId);
-    }
-    setAdvancingPhase(false);
-  }
-
-  // ── Player picks for active team tab ──
-  const activeTeamPlayers = activeTeamTab ? (squadPlayers[activeTeamTab] || []) : [];
-  const picksForActiveTeam = selectedPlayers.filter((p) => p.team_api_id === activeTeamTab);
-  const tempForActiveTeam = tempSelectedPlayers.filter((p) => p.team_api_id === activeTeamTab);
-
-  function isPlayerSelected(playerApiId) {
-    return (
-      selectedPlayers.some((p) => p.player_api_id === playerApiId) ||
-      tempSelectedPlayers.some((p) => p.player_api_id === playerApiId)
-    );
-  }
-
-  function togglePlayerSelect(player) {
-    const alreadySaved = selectedPlayers.some((p) => p.player_api_id === player.api_id);
-    if (alreadySaved) return; // can't deselect saved picks
-    const alreadyTemp = tempSelectedPlayers.some((p) => p.player_api_id === player.api_id);
-    const totalForTeam = picksForActiveTeam.length + tempForActiveTeam.length;
-    if (alreadyTemp) {
-      setTempSelectedPlayers((prev) => prev.filter((p) => p.player_api_id !== player.api_id));
-    } else if (totalForTeam < 3) {
-      setTempSelectedPlayers((prev) => [
-        ...prev,
-        { player_api_id: player.api_id, team_api_id: activeTeamTab, game_player_id: myPlayerId },
-      ]);
-    }
+    const transitions = {
+      drafting_teams: 'selecting_players',
+      selecting_players: 'selecting_captain',
+      selecting_captain: 'tournament',
+    };
+    const next = transitions[game.status];
+    if (next) await supabase.from('games').update({ status: next }).eq('id', gameId);
   }
 
   async function savePlayerPicks() {
-    if (tempSelectedPlayers.length === 0) return;
-    setSubmitting(true);
+    setSavingPlayers(true);
     try {
-      const toInsert = tempSelectedPlayers.map((p) => ({
-        game_id: gameId,
-        game_player_id: myPlayerId,
-        player_api_id: p.player_api_id,
-        team_api_id: p.team_api_id,
-      }));
-      const { data, error } = await supabase.from('player_picks').insert(toInsert).select();
-      if (error) throw error;
-      setSelectedPlayers((prev) => [...prev, ...(data || [])]);
-      setTempSelectedPlayers([]);
-    } catch (err) {
-      console.error('Save picks error', err);
+      const myDraftPicks = picks.filter((p) => p.game_player_id === myPlayerId);
+      const rows = [];
+      for (const draftPick of myDraftPicks) {
+        const sel = selectedPlayers[draftPick.team_api_id] || [];
+        sel.forEach((playerApiId) => {
+          rows.push({
+            game_id: gameId,
+            game_player_id: myPlayerId,
+            player_api_id: playerApiId,
+            team_api_id: draftPick.team_api_id,
+          });
+        });
+      }
+      if (rows.length > 0) {
+        // Delete existing first
+        await supabase
+          .from('player_picks')
+          .delete()
+          .eq('game_id', gameId)
+          .eq('game_player_id', myPlayerId);
+        await supabase.from('player_picks').insert(rows);
+        setSavedPlayerPicks(rows.map((r, i) => ({ ...r, id: i })));
+      }
     } finally {
-      setSubmitting(false);
+      setSavingPlayers(false);
     }
   }
 
-  // ── Captain ──
-  async function saveCaptain(player) {
-    setCaptainPickId(player.api_id);
+  async function saveCaptain() {
+    if (!captainId) return;
+    setSavingCaptain(true);
     try {
-      // Upsert via delete+insert
       await supabase
         .from('captain_picks')
-        .delete()
-        .eq('game_id', gameId)
-        .eq('game_player_id', myPlayerId);
-      await supabase.from('captain_picks').insert({
-        game_id: gameId,
-        game_player_id: myPlayerId,
-        player_api_id: player.api_id,
-      });
-      setSavedCaptain(player.api_id);
-    } catch (err) {
-      console.error('Captain error', err);
+        .upsert({ game_id: gameId, game_player_id: myPlayerId, player_api_id: captainId });
+      setSavedCaptain(captainId);
+    } finally {
+      setSavingCaptain(false);
     }
   }
 
-  // ── All my players (for captain grid) ──
-  const allMyPlayerApiIds = [...new Set(selectedPlayers.map((p) => p.player_api_id))];
-  const allMyPlayers = allMyPlayerApiIds
-    .map((apiId) => {
-      for (const arr of Object.values(squadPlayers)) {
-        const found = arr.find((pl) => pl.api_id === apiId);
-        if (found) return found;
-      }
-      return { api_id: apiId, name: apiId, position: '', number: null, photo_url: null };
-    })
-    .filter(Boolean);
-
-  // Preload squad players for captain phase
-  useEffect(() => {
-    if (game?.status === 'selecting_captain') {
-      myTeamPicks.forEach((pick) => loadSquadForTeam(pick.team_api_id));
-    }
-  }, [game?.status]);
-
-  if (gameLoading || playersLoading || teamsLoading || picksLoading) {
+  if (gameLoading || playersLoading || picksLoading || teamsLoading) {
     return (
-      <div className="page loading-page">
+      <div className="loader-center">
         <div className="spinner" />
-        <span>Loading draft...</span>
       </div>
     );
   }
 
   if (!game) {
     return (
-      <div className="page" style={{ textAlign: 'center' }}>
-        <p className="text-muted">Game not found.</p>
+      <div className="page">
+        <div className="empty-state"><p>Game not found.</p></div>
       </div>
     );
   }
 
-  // ════════════ PHASE: drafting_teams ════════════
-  if (game.status === 'drafting_teams') {
-    const potGroups = [1, 2, 3, 4].map((pot) => ({
-      pot,
-      teams: teams.filter((t) => t.pot === pot || (!t.pot && pot === 1)),
-    }));
+  const myDraftPicks = picks.filter((p) => p.game_player_id === myPlayerId);
+  const isDraftComplete = picks.length >= players.length * TOTAL_ROUNDS;
 
-    const draftComplete = picks.length >= players.length * TOTAL_ROUNDS;
+  // ── DRAFTING TEAMS ──
+  if (game.status === 'drafting_teams') {
+    const teamsByPot = {};
+    teams.forEach((t) => {
+      const pot = t.pot || 1;
+      if (!teamsByPot[pot]) teamsByPot[pot] = [];
+      teamsByPot[pot].push(t);
+    });
 
     return (
-      <div className="page page-wide">
-        {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+      <div className="page">
+        <PokeToast message={showPoke ? pokeMessage : ''} onDismiss={dismissPoke} />
 
-        <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
-          <h1 className="title">Team Draft</h1>
-          <div className="flex gap-1 items-center">
-            <span className="badge badge-muted">Pick #{picks.length + 1}</span>
-            {isHost && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={advancePhase}
-                disabled={advancingPhase}
-              >
-                {advancingPhase ? '...' : 'Advance Phase →'}
-              </button>
-            )}
-          </div>
+        <div className="page-header">
+          <h1 className="page-title">Team Draft</h1>
+          {isMyTurn && <span className="badge badge-gold">Your Turn!</span>}
+          {!isMyTurn && currentPicker && (
+            <span className="badge badge-muted">Waiting: {currentPicker.player_name}</span>
+          )}
         </div>
 
         <SnakeOrderBar
           players={players}
-          currentPickerIndex={currentPickerIdx}
+          currentPickerIndex={currentPickerIndex}
           myPlayerId={myPlayerId}
         />
 
-        {isMyTurn ? (
-          <div className="badge badge-gold" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
-            ⏳ Your turn to pick!
-          </div>
-        ) : currentPicker ? (
-          <div className="badge badge-muted" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
-            Waiting for {currentPicker.player_name}...
-          </div>
-        ) : draftComplete ? (
-          <div className="badge badge-green" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
-            ✓ Draft Complete
-          </div>
-        ) : null}
+        <div className="divider" />
 
-        <div style={{ display: 'grid', gridTemplateColumns: isHost ? '1fr 300px' : '1fr', gap: '1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isHost ? '1fr 300px' : '1fr', gap: 24, alignItems: 'start' }}>
           <div>
-            <SquadBuilder picks={picks} teams={teams} myPlayerId={myPlayerId} />
-            <div style={{ marginTop: '1.25rem' }}>
-              {potGroups.map(({ pot, teams: potTeams }) => (
-                <div key={pot} className="pot-group">
-                  <div className="pot-label">Pot {pot}</div>
-                  <div className="grid-4">
-                    {potTeams.map((team) => {
-                      const isTaken = takenTeamIds.has(team.api_id);
-                      const takenBy = isTaken ? pickerPlayerMap[team.api_id] : null;
-                      return (
-                        <TeamCard
-                          key={team.api_id}
-                          team={team}
-                          selected={selectedTeam?.api_id === team.api_id}
-                          taken={isTaken}
-                          takenBy={takenBy}
-                          onClick={isMyTurn ? setSelectedTeam : undefined}
-                          disabled={!isMyTurn}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+            <div className="mb-16">
+              <SquadBuilder picks={picks} teams={teams} myPlayerId={myPlayerId} />
             </div>
+
+            {[1, 2, 3, 4].map((pot) => (
+              <div key={pot} className="pot-section">
+                <div className="pot-header">
+                  <span className="pot-label">Pot {pot}</span>
+                  <div className="divider" style={{ flex: 1, margin: '0 12px' }} />
+                </div>
+                <div className="team-grid">
+                  {(teamsByPot[pot] || []).map((team) => {
+                    const taken = !!takenTeamMap[team.api_id];
+                    const takenBy = takenTeamMap[team.api_id];
+                    const isSelected = selectedTeam?.api_id === team.api_id;
+                    return (
+                      <TeamCard
+                        key={team.api_id}
+                        team={team}
+                        selected={isSelected}
+                        taken={taken}
+                        takenBy={takenBy}
+                        onClick={isMyTurn && !taken ? setSelectedTeam : null}
+                        disabled={!isMyTurn || taken}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           {isHost && (
-            <div>
+            <div style={{ position: 'sticky', top: 80 }}>
               <HostDashboard
                 players={players}
                 picks={picks}
-                currentPickerIndex={currentPickerIdx}
+                currentPickerIndex={currentPickerIndex}
                 onPoke={handlePoke}
                 teams={teams}
               />
+              {isDraftComplete && (
+                <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={advancePhase}>
+                  Advance to Player Selection →
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {isMyTurn && (
-          <ConfirmBar
-            selectedTeam={selectedTeam}
-            onConfirm={handleConfirmPick}
-            onCancel={() => setSelectedTeam(null)}
-          />
-        )}
-
-        {isMyTurn && selectedTeam && <div style={{ height: '80px' }} />}
+        <ConfirmBar
+          selectedTeam={selectedTeam}
+          onConfirm={confirmPick}
+          onCancel={() => setSelectedTeam(null)}
+        />
       </div>
     );
   }
 
-  // ════════════ PHASE: selecting_players ════════════
+  // ── SELECTING PLAYERS ──
   if (game.status === 'selecting_players') {
+    const tabs = myDraftPicks.map((pick) => {
+      const team = teams.find((t) => t.api_id === pick.team_api_id);
+      return { pick, team };
+    });
+
+    const currentTab = tabs[selectedTab];
+    const currentTeamId = currentTab?.pick?.team_api_id;
+    const currentSquad = squadPlayers[currentTeamId] || [];
+    const currentSelected = selectedPlayers[currentTeamId] || [];
+
+    function togglePlayer(playerApiId) {
+      const current = selectedPlayers[currentTeamId] || [];
+      if (current.includes(playerApiId)) {
+        setSelectedPlayers((prev) => ({
+          ...prev,
+          [currentTeamId]: current.filter((id) => id !== playerApiId),
+        }));
+      } else if (current.length < 3) {
+        setSelectedPlayers((prev) => ({
+          ...prev,
+          [currentTeamId]: [...current, playerApiId],
+        }));
+      }
+    }
+
+    const allTeamsDone = tabs.every((tab) => {
+      const sel = selectedPlayers[tab.pick.team_api_id] || [];
+      return sel.length === 3;
+    });
+
     return (
-      <div className="page page-wide">
-        {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+      <div className="page">
+        <PokeToast message={showPoke ? pokeMessage : ''} onDismiss={dismissPoke} />
 
-        <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
-          <h1 className="title">Pick Your Players</h1>
-          <div className="flex gap-1 items-center">
-            <span className="badge badge-muted">
-              {selectedPlayers.length}/{myTeamPicks.length * 3} players
-            </span>
-            {isHost && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={advancePhase}
-                disabled={advancingPhase}
-              >
-                {advancingPhase ? '...' : 'Advance Phase →'}
-              </button>
-            )}
+        <div className="page-header">
+          <h1 className="page-title">Select Players</h1>
+          <span className="badge badge-muted">3 per team</span>
+        </div>
+
+        {tabs.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🤔</div>
+            <p>You have no draft picks yet.</p>
           </div>
-        </div>
-
-        <p className="text-muted" style={{ marginBottom: '1rem' }}>
-          Select 3 players from each of your 8 teams.
-        </p>
-
-        <div className="tab-row">
-          {myTeamPicks.map((pick) => {
-            const team = teamMap[pick.team_api_id];
-            const pickedCount = selectedPlayers.filter((p) => p.team_api_id === pick.team_api_id).length +
-              tempSelectedPlayers.filter((p) => p.team_api_id === pick.team_api_id).length;
-            return (
-              <button
-                key={pick.team_api_id}
-                className={`tab${activeTeamTab === pick.team_api_id ? ' active' : ''}`}
-                onClick={() => {
-                  setActiveTeamTab(pick.team_api_id);
-                  loadSquadForTeam(pick.team_api_id);
-                }}
-              >
-                {team?.name || pick.team_api_id}
-                {' '}
-                <span style={{ opacity: 0.6 }}>({pickedCount}/3)</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {activeTeamTab && (
+        ) : (
           <>
-            <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
-              <span className="label">
-                {teamMap[activeTeamTab]?.name} — Pick 3 players
-              </span>
-              {tempSelectedPlayers.some((p) => p.team_api_id === activeTeamTab) && (
+            <div className="tabs mb-16">
+              {tabs.map((tab, i) => (
                 <button
-                  className="btn btn-primary btn-sm"
-                  onClick={savePlayerPicks}
-                  disabled={submitting}
+                  key={tab.pick.team_api_id}
+                  className={`tab${selectedTab === i ? ' active' : ''}`}
+                  onClick={() => setSelectedTab(i)}
                 >
-                  {submitting ? 'Saving...' : 'Save Picks'}
+                  {tab.team?.name || tab.pick.team_api_id}
+                  {' '}
+                  ({(selectedPlayers[tab.pick.team_api_id] || []).length}/3)
                 </button>
-              )}
+              ))}
             </div>
 
-            {!squadPlayers[activeTeamTab] ? (
-              <div className="loading-page"><div className="spinner" /></div>
-            ) : activeTeamPlayers.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-                No players found for this team.
+            {currentTab && (
+              <div>
+                <div className="mb-12">
+                  <span className="section-title">
+                    {currentTab.team?.name || currentTeamId} — Pick 3 players ({currentSelected.length}/3)
+                  </span>
+                </div>
+                {currentSquad.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">🔍</div>
+                    <p>No players found for this team in the database.</p>
+                    <p className="text-sm mt-8">Run the backfill script to populate player data.</p>
+                  </div>
+                ) : (
+                  <div className="grid-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                    {currentSquad.map((player) => {
+                      const isSelected = currentSelected.includes(player.api_id);
+                      const isDisabled = !isSelected && currentSelected.length >= 3;
+                      return (
+                        <div key={player.api_id} style={{ opacity: isDisabled ? 0.45 : 1 }}>
+                          <PlayerCard
+                            player={player}
+                            selected={isSelected}
+                            onClick={!isDisabled ? () => togglePlayer(player.api_id) : undefined}
+                            showPosition
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="grid-4">
-                {activeTeamPlayers.map((player) => {
-                  const sel = isPlayerSelected(player.api_id);
-                  return (
-                    <PlayerCard
-                      key={player.api_id}
-                      player={player}
-                      selected={sel}
-                      onClick={() => togglePlayerSelect(player)}
-                      showPosition
-                    />
-                  );
-                })}
+            )}
+
+            <div className="divider mt-24" />
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', alignItems: 'center', paddingTop: 16 }}>
+              <span className="text-muted text-sm">
+                {allTeamsDone ? '✓ All teams done!' : 'Select 3 players per team'}
+              </span>
+              <button
+                className="btn btn-primary"
+                onClick={savePlayerPicks}
+                disabled={savingPlayers || !allTeamsDone}
+              >
+                {savingPlayers ? 'Saving...' : 'Save Player Picks'}
+              </button>
+            </div>
+
+            {isHost && (
+              <div className="card mt-16">
+                <div className="card-title">Host Controls</div>
+                <button className="btn btn-secondary" onClick={advancePhase}>
+                  Advance to Captain Selection →
+                </button>
               </div>
             )}
           </>
@@ -508,51 +464,69 @@ export default function DraftView() {
     );
   }
 
-  // ════════════ PHASE: selecting_captain ════════════
+  // ── SELECTING CAPTAIN ──
   if (game.status === 'selecting_captain') {
+    // Build player objects from saved picks
+    const [allPlayers, setAllPlayers] = React.useState([]);
+
+    React.useEffect(() => {
+      if (savedPlayerPicks.length === 0) return;
+      const ids = savedPlayerPicks.map((p) => p.player_api_id);
+      supabase.from('players').select('*').in('api_id', ids).then(({ data }) => {
+        if (data) setAllPlayers(data);
+      });
+    }, [savedPlayerPicks]);
+
+    const effectiveCaptain = captainId || savedCaptain;
+
     return (
       <div className="page">
-        {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+        <PokeToast message={showPoke ? pokeMessage : ''} onDismiss={dismissPoke} />
 
-        <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
-          <h1 className="title">Pick Your Captain</h1>
-          <div className="flex gap-1 items-center">
-            {isHost && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={advancePhase}
-                disabled={advancingPhase}
-              >
-                {advancingPhase ? '...' : 'Start Tournament →'}
-              </button>
-            )}
-          </div>
+        <div className="page-header">
+          <h1 className="page-title">Pick Your Captain</h1>
+          {savedCaptain && <span className="badge badge-success">Saved</span>}
         </div>
 
-        <p className="text-muted" style={{ marginBottom: '1.25rem' }}>
-          Your captain scores double points throughout the tournament.
+        <p className="text-muted mb-16">
+          Your captain's points are doubled. Choose wisely!
         </p>
 
-        {savedCaptain && (
-          <div className="badge badge-gold" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
-            👑 Captain saved!
+        <CaptainGrid
+          playerPicks={allPlayers}
+          captainPickId={effectiveCaptain}
+          onSelectCaptain={setCaptainId}
+        />
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingTop: 24 }}>
+          <button
+            className="btn btn-primary"
+            onClick={saveCaptain}
+            disabled={savingCaptain || !captainId}
+          >
+            {savingCaptain ? 'Saving...' : 'Confirm Captain'}
+          </button>
+        </div>
+
+        {isHost && (
+          <div className="card mt-16">
+            <div className="card-title">Host Controls</div>
+            <p className="text-muted text-sm mb-12">
+              Once everyone has selected their captain, start the tournament.
+            </p>
+            <button className="btn btn-primary" onClick={advancePhase}>
+              Start Tournament →
+            </button>
           </div>
         )}
-
-        <CaptainGrid
-          playerPicks={allMyPlayers}
-          captainPickId={captainPickId || savedCaptain}
-          onSelectCaptain={saveCaptain}
-        />
       </div>
     );
   }
 
   // Fallback
   return (
-    <div className="page loading-page">
+    <div className="loader-center">
       <div className="spinner" />
-      <span>Loading...</span>
     </div>
   );
 }

@@ -1,50 +1,109 @@
 import React from 'react';
 import { normalizePosition } from '../lib/constants';
 
-const POSITION_COLORS = {
-  GK: '#f59e0b',
-  DEF: '#3b82f6',
-  MID: '#22c55e',
-  FWD: '#ef4444',
+const POS_COLORS = {
+  GK: { bg: 'rgba(255,215,0,0.15)', color: 'var(--gold)' },
+  DEF: { bg: 'rgba(34,197,94,0.15)', color: 'var(--success)' },
+  MID: { bg: 'rgba(59,130,246,0.15)', color: 'var(--info)' },
+  FWD: { bg: 'rgba(239,68,68,0.15)', color: 'var(--danger)' },
 };
 
-export default function PlayerCard({ player, selected, onClick, showPosition }) {
-  const pos = normalizePosition(player.position);
-  const posColor = POSITION_COLORS[pos] || '#8888aa';
+export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
+  const pos = normalizePosition(player?.position);
+  const posStyle = POS_COLORS[pos] || POS_COLORS.MID;
 
   return (
     <div
-      className={`player-card${selected ? ' player-card--selected' : ''}`}
       onClick={() => onClick && onClick(player)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onClick && onClick(player)}
+      style={{
+        background: 'var(--card-bg)',
+        border: `2px solid ${selected ? 'var(--gold)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius)',
+        padding: '12px 8px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '6px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 0.2s ease',
+        boxShadow: selected ? '0 0 16px rgba(255,215,0,0.35)' : 'none',
+        userSelect: 'none',
+        position: 'relative',
+      }}
     >
-      {player.photo_url ? (
-        <img
-          className="player-card__photo"
-          src={player.photo_url}
-          alt={player.name}
-          loading="lazy"
-          onError={(e) => {
-            e.target.style.display = 'none';
-            e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+      {/* Photo */}
+      <div
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: '50%',
+          border: selected ? '2px solid var(--gold)' : '2px solid var(--border)',
+          overflow: 'hidden',
+          background: 'var(--dark-bg)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {player?.photo_url ? (
+          <img
+            src={player.photo_url}
+            alt={player.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        ) : (
+          <span style={{ fontSize: '1.4rem' }}>👤</span>
+        )}
+      </div>
+
+      {/* Number badge */}
+      {player?.number && (
+        <span
+          style={{
+            position: 'absolute',
+            top: 6,
+            left: 6,
+            fontSize: '0.65rem',
+            background: 'rgba(255,255,255,0.1)',
+            color: 'var(--text-muted)',
+            borderRadius: 4,
+            padding: '1px 5px',
+            fontWeight: 600,
           }}
-        />
-      ) : (
-        <div className="player-card__photo-placeholder">👤</div>
+        >
+          #{player.number}
+        </span>
       )}
-      <span className="player-card__name">{player.name}</span>
-      {player.number && (
-        <span className="player-card__number">#{player.number}</span>
-      )}
+
+      {/* Name */}
+      <span
+        style={{
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          textAlign: 'center',
+          color: selected ? 'var(--gold)' : 'var(--text)',
+          lineHeight: 1.2,
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {player?.name || 'Unknown'}
+      </span>
+
+      {/* Position */}
       {showPosition && (
         <span
-          className="badge"
           style={{
-            background: `${posColor}22`,
-            color: posColor,
-            border: `1px solid ${posColor}44`,
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            padding: '2px 7px',
+            borderRadius: 100,
+            background: posStyle.bg,
+            color: posStyle.color,
           }}
         >
           {pos}
