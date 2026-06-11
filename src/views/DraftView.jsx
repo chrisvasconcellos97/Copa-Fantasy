@@ -1,69 +1,78 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { getSession } from '../lib/session';
 import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
 import { useDraft } from '../hooks/useDraft';
 import { useNotifications } from '../hooks/useNotifications';
+import { supabase } from '../lib/supabase';
 import { FALLBACK_POTS } from '../lib/constants';
 import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
 import TeamCard from '../components/TeamCard';
-import SnakeOrderBar from '../components/SnakeOrderBar';
 import ConfirmBar from '../components/ConfirmBar';
+import SnakeOrderBar from '../components/SnakeOrderBar';
 import HostDashboard from '../components/HostDashboard';
 import PokeToast from '../components/PokeToast';
 import SquadBuilder from '../components/SquadBuilder';
 import PlayerCard from '../components/PlayerCard';
 import CaptainGrid from '../components/CaptainGrid';
 
-const TEAMS_PER_PLAYER = 8;
+const TOTAL_ROUNDS = 8;
+
+function getSession() {
+  try {
+    return JSON.parse(localStorage.getItem('copa_session') || '{}');
+  } catch {
+    return {};
+  }
+}
 
 export default function DraftView() {
   const { gameId } = useParams();
   const navigate = useNavigate();
+  const { game, loading: gameLoading } = useGame(gameId);
+  const { players, loading: playersLoading } = usePlayers(gameId);
+  const { picks, loading: picksLoading } = useDraft(gameId);
   const session = getSession();
-  const myPlayerId = session?.playerId;
-  const isHost = !!session?.hostToken;
+  const myPlayerId = session.playerId;
+  const isHost = !!session.hostToken;
 
-  const { game } = useGame(gameId);
-  const { players } = usePlayers(gameId);
-  const { picks } = useDraft(gameId);
   const { showPoke, dismissPoke, pokeMessage } = useNotifications(myPlayerId);
 
-  // Teams from DB
+  // Teams from DB or fallback
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
 
-  // Team draft selection
-  const [selectedTeam, setSelectedTeam] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Player picks phase
+  // Player selection state
   const [squadPlayers, setSquadPlayers] = useState({}); // teamApiId -> players[]
   const [activeTeamTab, setActiveTeamTab] = useState(null);
-  const [selectedPlayers, setSelectedPlayers] = useState([]); // player_api_ids already saved
-  const [pendingPlayers, setPendingPlayers] = useState([]); // being selected in UI
+  const [selectedPlayers, setSelectedPlayers] = useState([]); // saved player_picks
+  const [tempSelectedPlayers, setTempSelectedPlayers] = useState([]); // current tab selections
 
-  // Captain phase
-  const [captainId, setCaptainId] = useState(null);
-  const [savedCaptainId, setSavedCaptainId] = useState(null);
+  // Captain state
+  const [captainPickId, setCaptainPickId] = useState(null);
+  const [savedCaptain, setSavedCaptain] = useState(null);
 
-  // ── Load teams ──────────────────────────────────────────────────
+  // Team draft state
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [advancingPhase, setAdvancingPhase] = useState(false);
+
+  // Load teams
   useEffect(() => {
     async function loadTeams() {
       setTeamsLoading(true);
-      const { data } = await supabase.from('teams').select('*').order('pot');
-      if (data && data.length > 0) {
+      const { data, error } = await supabase.from('teams').select('*');
+      if (!error && data && data.length > 0) {
         setTeams(data);
       } else {
-        // Build from FALLBACK_POTS
+        // Build fallback teams from FALLBACK_POTS
         const fallback = [];
-        Object.entries(FALLBACK_POTS).forEach(([pot, names]) => {
-          names.forEach((name, idx) => {
-            fallback.push({ api_id: `fallback_${pot}_${idx}`, name, pot: Number(pot), logo_url: null });
+        let apiId = 1;
+        for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
+          names.forEach((name) => {
+            fallback.push({ api_id: apiId++, name, logo_url: null, pot: Number(pot) });
           });
-        });
+        }
         setTeams(fallback);
       }
       setTeamsLoading(false);
@@ -71,464 +80,479 @@ export default function DraftView() {
     loadTeams();
   }, []);
 
-  // ── Load my player picks ──────────────────────────────────────
+  // Load existing player_picks
   useEffect(() => {
-    if (!myPlayerId || !gameId) return;
+    if (!gameId || !myPlayerId) return;
     async function loadPlayerPicks() {
       const { data } = await supabase
         .from('player_picks')
         .select('*')
         .eq('game_id', gameId)
         .eq('game_player_id', myPlayerId);
-      if (data) setSelectedPlayers(data.map((p) => String(p.player_api_id)));
+      if (data) setSelectedPlayers(data);
     }
     loadPlayerPicks();
   }, [gameId, myPlayerId, game?.status]);
 
-  // ── Load my captain ────────────────────────────────────────────
+  // Load captain pick
   useEffect(() => {
-    if (!myPlayerId || !gameId) return;
+    if (!gameId || !myPlayerId) return;
     async function loadCaptain() {
       const { data } = await supabase
         .from('captain_picks')
         .select('*')
         .eq('game_id', gameId)
         .eq('game_player_id', myPlayerId)
-        .maybeSingle();
-      if (data) {
-        setSavedCaptainId(String(data.player_api_id));
-        setCaptainId(String(data.player_api_id));
-      }
+        .single();
+      if (data) setSavedCaptain(data.player_api_id);
     }
     loadCaptain();
   }, [gameId, myPlayerId, game?.status]);
 
-  // ── Redirect when tournament starts ───────────────────────────
-  useEffect(() => {
-    if (game?.status === 'tournament' || game?.status === 'complete') {
-      navigate(`/leaderboard/${gameId}`, { replace: true });
-    }
-  }, [game?.status, gameId, navigate]);
-
-  // ── Derived values ─────────────────────────────────────────────
-  const snakeOrder = useMemo(
-    () => getSnakeOrder(players, TEAMS_PER_PLAYER),
-    [players]
-  );
-
-  const currentPicker = useMemo(
-    () => getCurrentPicker(picks, players, TEAMS_PER_PLAYER),
-    [picks, players]
-  );
-
-  const currentPickerIndex = useMemo(() => {
-    if (!currentPicker) return -1;
-    return players.findIndex((p) => p.id === currentPicker.id);
-  }, [currentPicker, players]);
-
-  const isMyTurn = currentPicker?.id === myPlayerId;
-
-  const takenMap = useMemo(() => {
-    const map = {};
-    picks.forEach((pick) => {
-      const player = players.find((p) => p.id === pick.game_player_id);
-      map[String(pick.team_api_id)] = player?.player_name || 'Taken';
-    });
-    return map;
-  }, [picks, players]);
-
-  const myTeamPicks = picks.filter((p) => String(p.game_player_id) === String(myPlayerId));
-  const myTeamApiIds = myTeamPicks.map((p) => String(p.team_api_id));
-
-  const draftComplete = picks.length >= players.length * TEAMS_PER_PLAYER;
-
-  // ── Load squad players for a team ─────────────────────────────
+  // Load squad players for a team
   async function loadSquadForTeam(teamApiId) {
     if (squadPlayers[teamApiId]) return;
     const { data } = await supabase
       .from('players')
       .select('*')
-      .eq('team_api_id', teamApiId)
-      .order('position');
+      .eq('team_api_id', teamApiId);
     setSquadPlayers((prev) => ({ ...prev, [teamApiId]: data || [] }));
   }
 
+  // Navigate on terminal status
   useEffect(() => {
-    if (game?.status === 'selecting_players' && activeTeamTab) {
-      loadSquadForTeam(activeTeamTab);
+    if (!game) return;
+    if (game.status === 'tournament' || game.status === 'complete') {
+      navigate(`/leaderboard/${gameId}`);
     }
-  }, [activeTeamTab, game?.status]);
+  }, [game, gameId, navigate]);
 
+  // Set active team tab when entering selecting_players phase
   useEffect(() => {
-    if (game?.status === 'selecting_players' && myTeamApiIds.length > 0 && !activeTeamTab) {
-      setActiveTeamTab(myTeamApiIds[0]);
+    if (game?.status === 'selecting_players' && myTeamPicks.length > 0 && !activeTeamTab) {
+      const firstTeam = myTeamPicks[0]?.team_api_id;
+      setActiveTeamTab(firstTeam);
+      loadSquadForTeam(firstTeam);
     }
-  }, [game?.status, myTeamApiIds.length]);
+  }, [game?.status, picks, activeTeamTab]);
 
-  // ── Actions ────────────────────────────────────────────────────
-  async function confirmTeamPick() {
+  const currentPickerIdx = getCurrentPicker(picks, players, TOTAL_ROUNDS);
+  const currentPicker = players[currentPickerIdx];
+  const isMyTurn = currentPicker?.id === myPlayerId;
+
+  const myTeamPicks = picks.filter((p) => p.game_player_id === myPlayerId);
+  const takenTeamIds = new Set(picks.map((p) => p.team_api_id));
+
+  const teamMap = {};
+  teams.forEach((t) => { teamMap[t.api_id] = t; });
+
+  const pickerPlayerMap = {};
+  picks.forEach((pick) => {
+    const player = players.find((pl) => pl.id === pick.game_player_id);
+    if (player) pickerPlayerMap[pick.team_api_id] = player.player_name;
+  });
+
+  // ── Team draft ──
+  async function handleConfirmPick() {
     if (!selectedTeam || !isMyTurn || submitting) return;
     setSubmitting(true);
     try {
-      await supabase.from('draft_picks').insert({
+      const { error } = await supabase.from('draft_picks').insert({
         game_id: gameId,
         game_player_id: myPlayerId,
-        pick_number: picks.length + 1,
+        pick_number: picks.length,
         team_api_id: selectedTeam.api_id,
       });
+      if (error) throw error;
       setSelectedTeam(null);
     } catch (err) {
-      console.error(err);
+      console.error('Pick error', err);
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handlePoke(targetPlayerId) {
-    await supabase.from('notifications').insert({
-      game_player_id: targetPlayerId,
-      type: 'poke',
-      message: "It's your turn to pick! ⏰",
-      read: false,
-    });
-  }
-
-  async function advancePhase() {
-    const phases = {
-      drafting_teams: 'selecting_players',
-      selecting_players: 'selecting_captain',
-      selecting_captain: 'tournament',
-    };
-    const next = phases[game?.status];
-    if (next) {
-      await supabase.from('games').update({ status: next }).eq('id', gameId);
+  // ── Poke ──
+  async function handlePoke(player) {
+    try {
+      await supabase.from('notifications').insert({
+        game_player_id: player.id,
+        type: 'poke',
+        message: `Hey ${player.player_name}, it's your turn to pick!`,
+        read: false,
+      });
+    } catch (err) {
+      console.error('Poke error', err);
     }
   }
 
-  function togglePlayerPick(player) {
-    const id = String(player.api_id);
-    if (selectedPlayers.includes(id)) return; // already saved
-    setPendingPlayers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+  // ── Phase advance (host only) ──
+  async function advancePhase() {
+    if (!isHost || advancingPhase) return;
+    setAdvancingPhase(true);
+    const nextStatus =
+      game.status === 'drafting_teams'
+        ? 'selecting_players'
+        : game.status === 'selecting_players'
+        ? 'selecting_captain'
+        : game.status === 'selecting_captain'
+        ? 'tournament'
+        : null;
+    if (nextStatus) {
+      await supabase.from('games').update({ status: nextStatus }).eq('id', gameId);
+    }
+    setAdvancingPhase(false);
+  }
+
+  // ── Player picks for active team tab ──
+  const activeTeamPlayers = activeTeamTab ? (squadPlayers[activeTeamTab] || []) : [];
+  const picksForActiveTeam = selectedPlayers.filter((p) => p.team_api_id === activeTeamTab);
+  const tempForActiveTeam = tempSelectedPlayers.filter((p) => p.team_api_id === activeTeamTab);
+
+  function isPlayerSelected(playerApiId) {
+    return (
+      selectedPlayers.some((p) => p.player_api_id === playerApiId) ||
+      tempSelectedPlayers.some((p) => p.player_api_id === playerApiId)
     );
+  }
+
+  function togglePlayerSelect(player) {
+    const alreadySaved = selectedPlayers.some((p) => p.player_api_id === player.api_id);
+    if (alreadySaved) return; // can't deselect saved picks
+    const alreadyTemp = tempSelectedPlayers.some((p) => p.player_api_id === player.api_id);
+    const totalForTeam = picksForActiveTeam.length + tempForActiveTeam.length;
+    if (alreadyTemp) {
+      setTempSelectedPlayers((prev) => prev.filter((p) => p.player_api_id !== player.api_id));
+    } else if (totalForTeam < 3) {
+      setTempSelectedPlayers((prev) => [
+        ...prev,
+        { player_api_id: player.api_id, team_api_id: activeTeamTab, game_player_id: myPlayerId },
+      ]);
+    }
   }
 
   async function savePlayerPicks() {
-    if (pendingPlayers.length === 0) return;
-    const rows = pendingPlayers.map((playerApiId) => {
-      const teamApiId = Object.keys(squadPlayers).find((tid) =>
-        squadPlayers[tid]?.some((p) => String(p.api_id) === playerApiId)
-      );
-      return {
+    if (tempSelectedPlayers.length === 0) return;
+    setSubmitting(true);
+    try {
+      const toInsert = tempSelectedPlayers.map((p) => ({
         game_id: gameId,
         game_player_id: myPlayerId,
-        player_api_id: playerApiId,
-        team_api_id: teamApiId || null,
-      };
-    });
-    await supabase.from('player_picks').insert(rows);
-    setSelectedPlayers((prev) => [...prev, ...pendingPlayers]);
-    setPendingPlayers([]);
+        player_api_id: p.player_api_id,
+        team_api_id: p.team_api_id,
+      }));
+      const { data, error } = await supabase.from('player_picks').insert(toInsert).select();
+      if (error) throw error;
+      setSelectedPlayers((prev) => [...prev, ...(data || [])]);
+      setTempSelectedPlayers([]);
+    } catch (err) {
+      console.error('Save picks error', err);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  async function saveCaptain() {
-    if (!captainId) return;
-    if (savedCaptainId) {
+  // ── Captain ──
+  async function saveCaptain(player) {
+    setCaptainPickId(player.api_id);
+    try {
+      // Upsert via delete+insert
       await supabase
         .from('captain_picks')
-        .update({ player_api_id: captainId })
+        .delete()
         .eq('game_id', gameId)
         .eq('game_player_id', myPlayerId);
-    } else {
       await supabase.from('captain_picks').insert({
         game_id: gameId,
         game_player_id: myPlayerId,
-        player_api_id: captainId,
+        player_api_id: player.api_id,
       });
+      setSavedCaptain(player.api_id);
+    } catch (err) {
+      console.error('Captain error', err);
     }
-    setSavedCaptainId(captainId);
-    alert('Captain saved!');
   }
 
-  // ── My squad players (for captain grid) ───────────────────────
-  const allMyPlayers = useMemo(() => {
-    const result = [];
-    const allIds = [...selectedPlayers, ...pendingPlayers];
-    Object.values(squadPlayers).forEach((teamPlayers) => {
-      teamPlayers.forEach((p) => {
-        if (allIds.includes(String(p.api_id))) result.push(p);
-      });
-    });
-    return result;
-  }, [squadPlayers, selectedPlayers, pendingPlayers]);
+  // ── All my players (for captain grid) ──
+  const allMyPlayerApiIds = [...new Set(selectedPlayers.map((p) => p.player_api_id))];
+  const allMyPlayers = allMyPlayerApiIds
+    .map((apiId) => {
+      for (const arr of Object.values(squadPlayers)) {
+        const found = arr.find((pl) => pl.api_id === apiId);
+        if (found) return found;
+      }
+      return { api_id: apiId, name: apiId, position: '', number: null, photo_url: null };
+    })
+    .filter(Boolean);
+
+  // Preload squad players for captain phase
+  useEffect(() => {
+    if (game?.status === 'selecting_captain') {
+      myTeamPicks.forEach((pick) => loadSquadForTeam(pick.team_api_id));
+    }
+  }, [game?.status]);
+
+  if (gameLoading || playersLoading || teamsLoading || picksLoading) {
+    return (
+      <div className="page loading-page">
+        <div className="spinner" />
+        <span>Loading draft...</span>
+      </div>
+    );
+  }
 
   if (!game) {
     return (
-      <div className="page">
-        <div className="loading">
-          <div className="spinner" />
-          Loading draft...
-        </div>
+      <div className="page" style={{ textAlign: 'center' }}>
+        <p className="text-muted">Game not found.</p>
       </div>
     );
   }
 
-  // ── PHASE: drafting_teams ──────────────────────────────────────
+  // ════════════ PHASE: drafting_teams ════════════
   if (game.status === 'drafting_teams') {
-    return (
-      <div className="page" style={{ paddingBottom: 80 }}>
-        {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+    const potGroups = [1, 2, 3, 4].map((pot) => ({
+      pot,
+      teams: teams.filter((t) => t.pot === pot || (!t.pot && pot === 1)),
+    }));
 
-        <div className="container">
-          {/* Phase banner */}
-          <div className="phase-banner mb-4">
-            <div className="phase-banner-title">Team Draft</div>
-            <div className="phase-banner-sub">
-              {isMyTurn
-                ? "🟢 It's your turn to pick!"
-                : `Waiting for ${currentPicker?.player_name || '...'}...`}
-            </div>
-          </div>
-
-          {/* Snake order bar */}
-          <div className="mb-4">
-            <SnakeOrderBar
-              players={players}
-              currentPickerIndex={currentPickerIndex}
-              myPlayerId={myPlayerId}
-            />
-          </div>
-
-          <div className="flex gap-4" style={{ alignItems: 'flex-start' }}>
-            {/* Main: team grid */}
-            <div style={{ flex: 1 }}>
-              <div className="mb-3 flex justify-between items-center">
-                <span className="text-sm text-muted">
-                  Pick {picks.length + 1} of {players.length * TEAMS_PER_PLAYER}
-                </span>
-                {draftComplete && (
-                  <span className="badge badge-success">Draft Complete</span>
-                )}
-              </div>
-
-              {teamsLoading ? (
-                <div className="loading" style={{ minHeight: 200 }}>
-                  <div className="spinner" />
-                </div>
-              ) : (
-                <div className="team-grid">
-                  {teams.map((team) => {
-                    const takenBy = takenMap[String(team.api_id)];
-                    const isTaken = !!takenBy;
-                    const isSelected = selectedTeam?.api_id === team.api_id;
-                    return (
-                      <TeamCard
-                        key={team.api_id}
-                        team={team}
-                        selected={isSelected}
-                        taken={isTaken}
-                        takenBy={takenBy}
-                        disabled={!isMyTurn || draftComplete}
-                        onClick={(t) => {
-                          if (isMyTurn && !isTaken) {
-                            setSelectedTeam(isSelected ? null : t);
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Sidebar */}
-            <div style={{ width: 240, flexShrink: 0 }}>
-              {/* My squad */}
-              <div className="card mb-3">
-                <SquadBuilder picks={picks} teams={teams} myPlayerId={myPlayerId} />
-              </div>
-
-              {/* Host dashboard */}
-              {isHost && (
-                <div className="mb-3">
-                  <HostDashboard
-                    players={players}
-                    picks={picks}
-                    currentPickerIndex={currentPickerIndex}
-                    onPoke={handlePoke}
-                    teams={teams}
-                  />
-                </div>
-              )}
-
-              {/* Host advance */}
-              {isHost && draftComplete && (
-                <button className="btn btn-gold btn-full" onClick={advancePhase}>
-                  Advance → Player Picks
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Confirm bar */}
-        <ConfirmBar
-          selectedTeam={selectedTeam}
-          onConfirm={confirmTeamPick}
-          onCancel={() => setSelectedTeam(null)}
-        />
-      </div>
-    );
-  }
-
-  // ── PHASE: selecting_players ───────────────────────────────────
-  if (game.status === 'selecting_players') {
-    const activeTeamObj = teams.find((t) => String(t.api_id) === String(activeTeamTab));
-    const activeSquad = (activeTeamTab && squadPlayers[activeTeamTab]) || [];
-    const pickedForActiveTeam = activeSquad
-      .filter((p) => selectedPlayers.includes(String(p.api_id)) || pendingPlayers.includes(String(p.api_id)))
-      .length;
+    const draftComplete = picks.length >= players.length * TOTAL_ROUNDS;
 
     return (
-      <div className="page">
+      <div className="page page-wide">
         {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
-        <div className="container">
-          <div className="phase-banner mb-4">
-            <div className="phase-banner-title">Select Players</div>
-            <div className="phase-banner-sub">
-              Pick 3 players from each of your 8 teams
-            </div>
-          </div>
 
-          {/* Team tabs */}
-          <div className="tabs mb-4">
-            {myTeamApiIds.map((tid) => {
-              const team = teams.find((t) => String(t.api_id) === String(tid));
-              return (
-                <button
-                  key={tid}
-                  className={`tab ${activeTeamTab === tid ? 'active' : ''}`}
-                  onClick={() => setActiveTeamTab(tid)}
-                >
-                  {team?.name || tid}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Active team players */}
-          {activeTeamTab && (
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <span className="font-semibold">{activeTeamObj?.name}</span>
-                <span className="text-sm text-muted">{pickedForActiveTeam}/3 selected</span>
-              </div>
-
-              {activeSquad.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-state-icon">👥</div>
-                  <div className="empty-state-title">Loading squad...</div>
-                </div>
-              ) : (
-                <div className="grid-4">
-                  {activeSquad.map((player) => {
-                    const isSaved = selectedPlayers.includes(String(player.api_id));
-                    const isPending = pendingPlayers.includes(String(player.api_id));
-                    const isSelected = isSaved || isPending;
-                    const atLimit = pickedForActiveTeam >= 3;
-                    return (
-                      <PlayerCard
-                        key={player.api_id}
-                        player={player}
-                        selected={isSelected}
-                        disabled={isSaved || (!isPending && atLimit)}
-                        onClick={togglePlayerPick}
-                        showPosition
-                      />
-                    );
-                  })}
-                </div>
-              )}
-
-              {pendingPlayers.length > 0 && (
-                <div className="mt-4 flex gap-3">
-                  <button className="btn btn-gold" onClick={savePlayerPicks}>
-                    Save Picks ({pendingPlayers.length})
-                  </button>
-                  <button className="btn btn-outline" onClick={() => setPendingPlayers([])}>
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Host advance */}
-          {isHost && (
-            <div className="mt-6 card">
-              <div className="font-semibold mb-2">Host Controls</div>
-              <button className="btn btn-gold" onClick={advancePhase}>
-                Advance → Captain Pick
+        <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
+          <h1 className="title">Team Draft</h1>
+          <div className="flex gap-1 items-center">
+            <span className="badge badge-muted">Pick #{picks.length + 1}</span>
+            {isHost && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={advancePhase}
+                disabled={advancingPhase}
+              >
+                {advancingPhase ? '...' : 'Advance Phase →'}
               </button>
+            )}
+          </div>
+        </div>
+
+        <SnakeOrderBar
+          players={players}
+          currentPickerIndex={currentPickerIdx}
+          myPlayerId={myPlayerId}
+        />
+
+        {isMyTurn ? (
+          <div className="badge badge-gold" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
+            ⏳ Your turn to pick!
+          </div>
+        ) : currentPicker ? (
+          <div className="badge badge-muted" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
+            Waiting for {currentPicker.player_name}...
+          </div>
+        ) : draftComplete ? (
+          <div className="badge badge-green" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
+            ✓ Draft Complete
+          </div>
+        ) : null}
+
+        <div style={{ display: 'grid', gridTemplateColumns: isHost ? '1fr 300px' : '1fr', gap: '1.25rem' }}>
+          <div>
+            <SquadBuilder picks={picks} teams={teams} myPlayerId={myPlayerId} />
+            <div style={{ marginTop: '1.25rem' }}>
+              {potGroups.map(({ pot, teams: potTeams }) => (
+                <div key={pot} className="pot-group">
+                  <div className="pot-label">Pot {pot}</div>
+                  <div className="grid-4">
+                    {potTeams.map((team) => {
+                      const isTaken = takenTeamIds.has(team.api_id);
+                      const takenBy = isTaken ? pickerPlayerMap[team.api_id] : null;
+                      return (
+                        <TeamCard
+                          key={team.api_id}
+                          team={team}
+                          selected={selectedTeam?.api_id === team.api_id}
+                          taken={isTaken}
+                          takenBy={takenBy}
+                          onClick={isMyTurn ? setSelectedTeam : undefined}
+                          disabled={!isMyTurn}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {isHost && (
+            <div>
+              <HostDashboard
+                players={players}
+                picks={picks}
+                currentPickerIndex={currentPickerIdx}
+                onPoke={handlePoke}
+                teams={teams}
+              />
             </div>
           )}
         </div>
+
+        {isMyTurn && (
+          <ConfirmBar
+            selectedTeam={selectedTeam}
+            onConfirm={handleConfirmPick}
+            onCancel={() => setSelectedTeam(null)}
+          />
+        )}
+
+        {isMyTurn && selectedTeam && <div style={{ height: '80px' }} />}
       </div>
     );
   }
 
-  // ── PHASE: selecting_captain ───────────────────────────────────
+  // ════════════ PHASE: selecting_players ════════════
+  if (game.status === 'selecting_players') {
+    return (
+      <div className="page page-wide">
+        {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+
+        <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
+          <h1 className="title">Pick Your Players</h1>
+          <div className="flex gap-1 items-center">
+            <span className="badge badge-muted">
+              {selectedPlayers.length}/{myTeamPicks.length * 3} players
+            </span>
+            {isHost && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={advancePhase}
+                disabled={advancingPhase}
+              >
+                {advancingPhase ? '...' : 'Advance Phase →'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="text-muted" style={{ marginBottom: '1rem' }}>
+          Select 3 players from each of your 8 teams.
+        </p>
+
+        <div className="tab-row">
+          {myTeamPicks.map((pick) => {
+            const team = teamMap[pick.team_api_id];
+            const pickedCount = selectedPlayers.filter((p) => p.team_api_id === pick.team_api_id).length +
+              tempSelectedPlayers.filter((p) => p.team_api_id === pick.team_api_id).length;
+            return (
+              <button
+                key={pick.team_api_id}
+                className={`tab${activeTeamTab === pick.team_api_id ? ' active' : ''}`}
+                onClick={() => {
+                  setActiveTeamTab(pick.team_api_id);
+                  loadSquadForTeam(pick.team_api_id);
+                }}
+              >
+                {team?.name || pick.team_api_id}
+                {' '}
+                <span style={{ opacity: 0.6 }}>({pickedCount}/3)</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTeamTab && (
+          <>
+            <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
+              <span className="label">
+                {teamMap[activeTeamTab]?.name} — Pick 3 players
+              </span>
+              {tempSelectedPlayers.some((p) => p.team_api_id === activeTeamTab) && (
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={savePlayerPicks}
+                  disabled={submitting}
+                >
+                  {submitting ? 'Saving...' : 'Save Picks'}
+                </button>
+              )}
+            </div>
+
+            {!squadPlayers[activeTeamTab] ? (
+              <div className="loading-page"><div className="spinner" /></div>
+            ) : activeTeamPlayers.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                No players found for this team.
+              </div>
+            ) : (
+              <div className="grid-4">
+                {activeTeamPlayers.map((player) => {
+                  const sel = isPlayerSelected(player.api_id);
+                  return (
+                    <PlayerCard
+                      key={player.api_id}
+                      player={player}
+                      selected={sel}
+                      onClick={() => togglePlayerSelect(player)}
+                      showPosition
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ════════════ PHASE: selecting_captain ════════════
   if (game.status === 'selecting_captain') {
     return (
       <div className="page">
         {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
-        <div className="container" style={{ maxWidth: 700 }}>
-          <div className="phase-banner mb-4">
-            <div className="phase-banner-title">Captain Pick</div>
-            <div className="phase-banner-sub">
-              Choose your captain — they score double points!
-            </div>
-          </div>
 
-          <div className="card mb-4">
-            <CaptainGrid
-              playerPicks={allMyPlayers}
-              captainPickId={captainId}
-              onSelectCaptain={(p) => setCaptainId(String(p.api_id))}
-            />
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              className="btn btn-gold"
-              onClick={saveCaptain}
-              disabled={!captainId || captainId === savedCaptainId}
-            >
-              {savedCaptainId ? 'Update Captain' : 'Confirm Captain'}
-            </button>
-          </div>
-
-          {/* Host advance */}
-          {isHost && (
-            <div className="mt-6 card">
-              <div className="font-semibold mb-2">Host Controls</div>
-              <button className="btn btn-gold" onClick={advancePhase}>
-                Start Tournament →
+        <div className="flex items-center justify-between" style={{ marginBottom: '1rem' }}>
+          <h1 className="title">Pick Your Captain</h1>
+          <div className="flex gap-1 items-center">
+            {isHost && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={advancePhase}
+                disabled={advancingPhase}
+              >
+                {advancingPhase ? '...' : 'Start Tournament →'}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
+
+        <p className="text-muted" style={{ marginBottom: '1.25rem' }}>
+          Your captain scores double points throughout the tournament.
+        </p>
+
+        {savedCaptain && (
+          <div className="badge badge-gold" style={{ marginBottom: '1rem', display: 'inline-flex' }}>
+            👑 Captain saved!
+          </div>
+        )}
+
+        <CaptainGrid
+          playerPicks={allMyPlayers}
+          captainPickId={captainPickId || savedCaptain}
+          onSelectCaptain={saveCaptain}
+        />
       </div>
     );
   }
 
   // Fallback
   return (
-    <div className="page">
-      <div className="loading">
-        <div className="spinner" />
-        <span>Loading phase: {game.status}</span>
-      </div>
+    <div className="page loading-page">
+      <div className="spinner" />
+      <span>Loading...</span>
     </div>
   );
 }

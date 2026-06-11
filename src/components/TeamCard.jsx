@@ -1,38 +1,46 @@
 import React from 'react';
 
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
-  const handleClick = () => {
-    if (taken || disabled) return;
-    if (onClick) onClick(team);
-  };
-
-  const className = [
+  const classes = [
     'team-card',
     selected ? 'selected' : '',
     taken ? 'taken' : '',
-    disabled && !selected ? 'disabled' : '',
+    disabled && !taken ? 'disabled' : '',
   ].filter(Boolean).join(' ');
 
+  function handleClick() {
+    if (taken || disabled) return;
+    if (onClick) onClick(team);
+  }
+
   return (
-    <div className={className} onClick={handleClick} role="button" tabIndex={taken || disabled ? -1 : 0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); }}>
+    <div className={classes} onClick={handleClick} title={team.name}>
+      <span className="pot-badge">P{team.pot || '?'}</span>
       {team.logo_url ? (
         <img
           src={team.logo_url}
           alt={team.name}
-          className="team-logo"
-          onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+          onError={(e) => { e.target.style.display = 'none'; }}
         />
-      ) : null}
-      <div className="team-logo-fallback" style={{ display: team.logo_url ? 'none' : 'flex' }}>⚽</div>
-      <span className="team-name">{team.name}</span>
-      {team.pot && <span className="team-pot-badge">Pot {team.pot}</span>}
-
-      {taken && (
-        <div className="taken-overlay">
-          <span className="taken-label">Taken</span>
-          {takenBy && <span className="taken-by">{takenBy}</span>}
+      ) : (
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            background: 'var(--border)',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.4rem',
+          }}
+        >
+          🏳️
         </div>
+      )}
+      <span className="team-name">{team.name}</span>
+      {taken && takenBy && (
+        <span className="taken-by">{takenBy}</span>
       )}
     </div>
   );

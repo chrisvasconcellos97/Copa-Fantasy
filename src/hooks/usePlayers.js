@@ -1,24 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 export function usePlayers(gameId) {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const channelRef = useRef(null);
 
   useEffect(() => {
-    if (!gameId) { setLoading(false); return; }
+    if (!gameId) return;
 
-    let cancelled = false;
+    let mounted = true;
 
     async function load() {
-      setLoading(true);
       const { data, error } = await supabase
         .from('game_players')
         .select('*')
         .eq('game_id', gameId)
         .order('joined_at', { ascending: true });
-      if (!cancelled) {
+      if (mounted) {
         if (!error) setPlayers(data || []);
         setLoading(false);
       }
@@ -27,27 +25,25 @@ export function usePlayers(gameId) {
     load();
 
     const channel = supabase
-      .channel(`players-${gameId}`)
+      .channel(`game-players-${gameId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) setPlayers((prev) => [...prev, payload.new]);
+          if (mounted) setPlayers((prev) => [...prev, payload.new]);
         }
       )
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
+          if (mounted) setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
         }
       )
       .subscribe();
 
-    channelRef.current = channel;
-
     return () => {
-      cancelled = true;
+      mounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);
