@@ -68,11 +68,13 @@ export default function DraftView() {
       if (!error && data && data.length > 0) {
         setTeams(data);
       } else {
-        // Build from fallback pots
+        // Build from fallback pots — use negative numeric IDs to avoid DB integer constraint
         const fallback = [];
+        let fakeId = -1;
         for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
           for (const name of names) {
-            fallback.push({ api_id: `fallback-${name.replace(/\s/g, '-')}`, name, logo_url: null, pot: parseInt(pot) });
+            const code = name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6);
+            fallback.push({ api_id: fakeId--, code, name, logo_url: null, pot: parseInt(pot) });
           }
         }
         setTeams(fallback);
@@ -133,14 +135,23 @@ export default function DraftView() {
   const snakeOrder = getSnakeOrder(players, TOTAL_ROUNDS);
   const currentPickerIndex = getCurrentPicker(picks, players, TOTAL_ROUNDS);
   const myPicks = picks.filter((p) => p.game_player_id === myPlayerId);
+
+  // Pot gating: rounds 1-2 = pot 1, 3-4 = pot 2, 5-6 = pot 3, 7-8 = pot 4
+  const currentRound = players.length > 0 ? Math.floor(picks.length / players.length) + 1 : 1;
+  const activePot = Math.min(4, Math.ceil(currentRound / 2));
   const isMyTurn = players[currentPickerIndex]?.id === myPlayerId;
   const draftComplete = picks.length >= players.length * TOTAL_ROUNDS;
 
   // Taken teams map: teamApiId -> playerName
+  // Key by team_api_id (if real) or team_code (fallback)
   const takenTeamsMap = {};
   for (const pick of picks) {
     const player = players.find((p) => p.id === pick.game_player_id);
-    takenTeamsMap[pick.team_api_id] = player?.player_name || 'Taken';
+    const key = pick.team_api_id ?? pick.team_code;
+    takenTeamsMap[key] = player?.player_name || 'Taken';
+  }
+  function teamKey(team) {
+    return team.api_id > 0 ? team.api_id : (team.code || team.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6));
   }
 
   async function handleConfirmPick() {
@@ -148,11 +159,13 @@ export default function DraftView() {
     setSubmitting(true);
     try {
       const pickNumber = picks.length + 1;
+      const isRealTeam = selectedTeam.api_id > 0;
       const { error } = await supabase.from('draft_picks').insert({
         game_id: gameId,
         game_player_id: myPlayerId,
         pick_number: pickNumber,
-        team_api_id: selectedTeam.api_id,
+        team_code: selectedTeam.code || selectedTeam.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6),
+        team_api_id: isRealTeam ? selectedTeam.api_id : null,
       });
       if (error) throw error;
       setSelectedTeam(null);
@@ -207,7 +220,7 @@ export default function DraftView() {
     if (playerIds.length === 0) return;
 
     // Find the draft_pick for this team (links player_picks back to the team)
-    const draftPick = picks.find((p) => p.game_player_id === myPlayerId && p.team_api_id === teamApiId);
+    const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (p.team_api_id === teamApiId || p.team_code === String(teamApiId)));
     if (!draftPick) { alert('Draft pick not found for this team'); return; }
 
     // Remove old picks for this draft_pick
@@ -271,8 +284,10 @@ export default function DraftView() {
   }
 
   // My teams for player pick phase
-  const myTeamIds = myPicks.map((p) => p.team_api_id);
-  const myTeams = myTeamIds.map((id) => teams.find((t) => t.api_id === id)).filter(Boolean);
+  const myTeams = myPicks.map((pick) => {
+    if (pick.team_api_id) return teams.find((t) => t.api_id === pick.team_api_id);
+    return teams.find((t) => (t.code || t.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6)) === pick.team_code);
+  }).filter(Boolean);
 
   // My picked players for captain selection
   const myPickedPlayerApiIds = savedPlayerPicks.map((p) => p.player_api_id);
@@ -371,6 +386,7 @@ export default function DraftView() {
             </div>
             {/* Pot headers */}
             {[1, 2, 3, 4].map((pot) => {
+              if (pot !== activePot) return null;
               const potTeams = teams.filter((t) => t.pot === pot);
               if (potTeams.length === 0) return null;
               return (
@@ -383,8 +399,8 @@ export default function DraftView() {
                   </div>
                   <div className="card-grid">
                     {potTeams.map((team) => {
-                      const taken = !!takenTeamsMap[team.api_id];
-                      const takenBy = takenTeamsMap[team.api_id];
+                      const taken = !!takenTeamsMap[teamKey(team)];
+                      const takenBy = takenTeamsMap[teamKey(team)];
                       const isSelected = selectedTeam?.api_id === team.api_id;
                       return (
                         <TeamCard
@@ -414,7 +430,7 @@ export default function DraftView() {
                   </div>
                   <div className="card-grid">
                     {noPotTeams.map((team) => {
-                      const taken = !!takenTeamsMap[team.api_id];
+                      const taken = !!takenTeamsMap[teamKey(team)];
                       const isSelected = selectedTeam?.api_id === team.api_id;
                       return (
                         <TeamCard
