@@ -1,298 +1,254 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { getSession } from '../lib/session';
-import { useScores } from '../hooks/useScores';
-import { usePlayers } from '../hooks/usePlayers';
-import LeaderboardRow from '../components/LeaderboardRow';
-import { SCORING, RESULT_TYPES } from '../lib/constants';
+import { useScores } from '../hooks/useScores.js';
+import { usePlayers } from '../hooks/usePlayers.js';
+import { useDraft } from '../hooks/useDraft.js';
+import { getSession } from '../lib/session.js';
+import { supabase } from '../lib/supabase.js';
+import { RESULT_TYPES, SCORING } from '../lib/constants.js';
+import LeaderboardRow from '../components/LeaderboardRow.jsx';
 
 export default function LeaderboardView() {
   const { gameId } = useParams();
+  const { scores, loading: scoresLoading } = useScores(gameId);
+  const { players } = usePlayers(gameId);
+  const { picks } = useDraft(gameId);
   const session = getSession();
   const isHost = Boolean(session?.hostToken);
 
-  const { scores, loading: scoresLoading } = useScores(gameId);
-  const { players, loading: playersLoading } = usePlayers(gameId);
-
   const [teams, setTeams] = useState([]);
   const [allPlayers, setAllPlayers] = useState([]);
-  const [allDraftPicks, setAllDraftPicks] = useState([]);
-  const [allPlayerPicks, setAllPlayerPicks] = useState([]);
-  const [allCaptainPicks, setAllCaptainPicks] = useState([]);
-  const [expandedId, setExpandedId] = useState(null);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [playerPicksAll, setPlayerPicksAll] = useState([]);
+  const [captainPicksAll, setCaptainPicksAll] = useState([]);
+  const [expandedRow, setExpandedRow] = useState(null);
 
-  // Host controls state
-  const [selectedResultTeam, setSelectedResultTeam] = useState('');
-  const [selectedResultType, setSelectedResultType] = useState('');
-  const [applyingResult, setApplyingResult] = useState(false);
-  const [resultMsg, setResultMsg] = useState('');
-
+  // Host controls
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [selectedResultType, setSelectedResultType] = useState('group_win');
   const [bonusPlayerId, setBonusPlayerId] = useState('');
   const [bonusPoints, setBonusPoints] = useState('');
-  const [bonusNote, setBonusNote] = useState('');
-  const [applyingBonus, setApplyingBonus] = useState(false);
-  const [bonusMsg, setBonusMsg] = useState('');
+  const [bonusDesc, setBonusDesc] = useState('');
+  const [hostLoading, setHostLoading] = useState(false);
+  const [hostMsg, setHostMsg] = useState('');
 
   useEffect(() => {
     async function loadData() {
-      const [teamsRes, playersRes, draftRes, playerPicksRes, captainRes] = await Promise.all([
+      const [{ data: teamsData }, { data: playersData }, { data: ppData }, { data: cpData }] = await Promise.all([
         supabase.from('teams').select('*'),
         supabase.from('players').select('*'),
-        supabase.from('draft_picks').select('*').eq('game_id', gameId),
         supabase.from('player_picks').select('*').eq('game_id', gameId),
         supabase.from('captain_picks').select('*').eq('game_id', gameId),
       ]);
-      setTeams(teamsRes.data || []);
-      setAllPlayers(playersRes.data || []);
-      setAllDraftPicks(draftRes.data || []);
-      setAllPlayerPicks(playerPicksRes.data || []);
-      setAllCaptainPicks(captainRes.data || []);
-      setDataLoading(false);
+      setTeams(teamsData || []);
+      setAllPlayers(playersData || []);
+      setPlayerPicksAll(ppData || []);
+      setCaptainPicksAll(cpData || []);
     }
     loadData();
   }, [gameId]);
 
-  // Build ranked list: merge scores with players
-  const ranked = players
-    .map((player) => {
-      const score = scores.find((s) => s.game_player_id === player.id);
-      return { player, score: score || { total_points: 0, breakdown: {} } };
-    })
-    .sort((a, b) => (b.score.total_points || 0) - (a.score.total_points || 0));
+  async function handleAddTeamResult() {
+    if (!selectedTeamId || hostLoading) return;
+    setHostLoading(true);
+    setHostMsg('');
+    try {
+      const pts = SCORING[selectedResultType] || 0;
+      // Find all game_players who have this team
+      const gamePickers = picks
+        .filter(p => p.team_api_id === selectedTeamId)
+        .map(p => p.game_player_id);
 
-  async function ensureScoreRow(gamePlayerId) {
-    const { data } = await supabase
-      .from('user_scores')
-      .select('id')
-      .eq('game_id', gameId)
-      .eq('game_player_id', gamePlayerId)
-      .single();
-    if (!data) {
-      await supabase.from('user_scores').insert({
-        game_id: gameId,
-        game_player_id: gamePlayerId,
-        total_points: 0,
-        breakdown: {},
-      });
+      for (const gpId of gamePickers) {
+        // Get or create user_scores row
+        const { data: existing } = await supabase
+          .from('user_scores')
+          .select('*')
+          .eq('game_id', gameId)
+          .eq('game_player_id', gpId)
+          .single();
+
+        const currentBreakdown = existing?.breakdown || {};
+        const teamKey = `team_${selectedTeamId}_${selectedResultType}`;
+        const newBreakdown = { ...currentBreakdown, [teamKey]: (currentBreakdown[teamKey] || 0) + pts };
+        const newTotal = Object.values(newBreakdown).reduce((a, b) => a + b, 0);
+
+        await supabase.from('user_scores').upsert({
+          game_id: gameId,
+          game_player_id: gpId,
+          total_points: newTotal,
+          breakdown: newBreakdown,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'game_id,game_player_id' });
+      }
+      setHostMsg(`Added ${pts} pts to ${gamePickers.length} player(s) for ${selectedResultType}`);
+    } catch (err) {
+      setHostMsg(`Error: ${err.message}`);
+    } finally {
+      setHostLoading(false);
     }
   }
 
-  async function handleApplyResult() {
-    if (!selectedResultTeam || !selectedResultType) return;
-    setApplyingResult(true);
-    setResultMsg('');
-
-    const pts = SCORING[selectedResultType] || 0;
-
-    // Find all players who have this team
-    const picksForTeam = allDraftPicks.filter(
-      (dp) => dp.team_api_id === selectedResultTeam
-    );
-
-    for (const dp of picksForTeam) {
-      await ensureScoreRow(dp.game_player_id);
-      const existing = scores.find((s) => s.game_player_id === dp.game_player_id);
-      const currentBreakdown = existing?.breakdown || {};
-      const newBreakdown = {
-        ...currentBreakdown,
-        [selectedResultType]: (currentBreakdown[selectedResultType] || 0) + pts,
-      };
-      const newTotal = (existing?.total_points || 0) + pts;
-
-      await supabase
+  async function handleAddBonus() {
+    if (!bonusPlayerId || !bonusPoints || hostLoading) return;
+    setHostLoading(true);
+    setHostMsg('');
+    try {
+      const pts = Number(bonusPoints);
+      const { data: existing } = await supabase
         .from('user_scores')
-        .update({ total_points: newTotal, breakdown: newBreakdown, updated_at: new Date().toISOString() })
+        .select('*')
         .eq('game_id', gameId)
-        .eq('game_player_id', dp.game_player_id);
+        .eq('game_player_id', bonusPlayerId)
+        .single();
+
+      const currentBreakdown = existing?.breakdown || {};
+      const bonusKey = `bonus_${Date.now()}`;
+      const newBreakdown = { ...currentBreakdown, [bonusKey]: pts };
+      if (bonusDesc) newBreakdown[`bonus_desc_${Date.now()}`] = bonusDesc;
+      const newTotal = Object.values(newBreakdown).filter(v => typeof v === 'number').reduce((a, b) => a + b, 0);
+
+      await supabase.from('user_scores').upsert({
+        game_id: gameId,
+        game_player_id: bonusPlayerId,
+        total_points: newTotal,
+        breakdown: newBreakdown,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'game_id,game_player_id' });
+
+      setHostMsg(`Added ${pts} bonus points`);
+      setBonusPoints('');
+      setBonusDesc('');
+    } catch (err) {
+      setHostMsg(`Error: ${err.message}`);
+    } finally {
+      setHostLoading(false);
     }
-
-    const teamName = teams.find((t) => t.api_id === selectedResultTeam)?.name || selectedResultTeam;
-    setResultMsg(`✅ Applied ${pts} pts to ${picksForTeam.length} player(s) who own ${teamName}`);
-    setApplyingResult(false);
   }
 
-  async function handleApplyBonus() {
-    if (!bonusPlayerId || !bonusPoints) return;
-    setApplyingBonus(true);
-    setBonusMsg('');
-
-    const pts = parseInt(bonusPoints, 10);
-    if (isNaN(pts)) {
-      setBonusMsg('Invalid points value');
-      setApplyingBonus(false);
-      return;
+  async function handleOverride(gpId, newTotal) {
+    setHostLoading(true);
+    try {
+      await supabase.from('user_scores').upsert({
+        game_id: gameId,
+        game_player_id: gpId,
+        total_points: newTotal,
+        breakdown: { override: newTotal },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'game_id,game_player_id' });
+      setHostMsg(`Override applied: ${newTotal} pts`);
+    } catch (err) {
+      setHostMsg(`Error: ${err.message}`);
+    } finally {
+      setHostLoading(false);
     }
-
-    await ensureScoreRow(bonusPlayerId);
-    const existing = scores.find((s) => s.game_player_id === bonusPlayerId);
-    const currentBreakdown = existing?.breakdown || {};
-    const key = bonusNote || 'manual_bonus';
-    const newBreakdown = {
-      ...currentBreakdown,
-      [key]: (currentBreakdown[key] || 0) + pts,
-    };
-    const newTotal = (existing?.total_points || 0) + pts;
-
-    await supabase
-      .from('user_scores')
-      .update({ total_points: newTotal, breakdown: newBreakdown, updated_at: new Date().toISOString() })
-      .eq('game_id', gameId)
-      .eq('game_player_id', bonusPlayerId);
-
-    const playerName = players.find((p) => p.id === bonusPlayerId)?.player_name || bonusPlayerId;
-    setBonusMsg(`✅ Applied ${pts} pts to ${playerName}`);
-    setBonusPoints('');
-    setBonusNote('');
-    setApplyingBonus(false);
   }
 
-  async function handleOverride(gamePlayerId, pts, note) {
-    await ensureScoreRow(gamePlayerId);
-    const existing = scores.find((s) => s.game_player_id === gamePlayerId);
-    const currentBreakdown = existing?.breakdown || {};
-    const key = note || 'override';
-    const newBreakdown = { ...currentBreakdown, [key]: (currentBreakdown[key] || 0) + pts };
-    const newTotal = (existing?.total_points || 0) + pts;
-    await supabase
-      .from('user_scores')
-      .update({ total_points: newTotal, breakdown: newBreakdown, updated_at: new Date().toISOString() })
-      .eq('game_id', gameId)
-      .eq('game_player_id', gamePlayerId);
-  }
+  // Build leaderboard entries: merge players with scores
+  const leaderboardEntries = players.map(player => {
+    const score = scores.find(s => s.game_player_id === player.id);
+    return { player, score };
+  }).sort((a, b) => (b.score?.total_points || 0) - (a.score?.total_points || 0));
 
-  if (scoresLoading || playersLoading || dataLoading) {
-    return (
-      <div className="loading-page">
-        <div className="loading-spinner" />
-        <span>Loading leaderboard...</span>
-      </div>
-    );
+  const captainMap = {};
+  for (const cp of captainPicksAll) {
+    captainMap[cp.game_player_id] = cp.player_api_id;
   }
 
   return (
     <div className="page">
-      <h1 className="page-title">🏆 Leaderboard</h1>
+      <h1 className="page-title">Leaderboard</h1>
 
-      {/* Leaderboard */}
-      <div className="flex flex-col gap-3 mb-6">
-        {ranked.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state__icon">📊</div>
-            <div className="empty-state__title">No scores yet</div>
-          </div>
-        ) : (
-          ranked.map(({ player, score }, idx) => {
-            const rank = idx + 1;
-            const playerDraftPicks = allDraftPicks.filter((dp) => dp.game_player_id === player.id);
-            const playerPicksList = allPlayerPicks.filter((pp) => pp.game_player_id === player.id);
-            const captainPick = allCaptainPicks.find((cp) => cp.game_player_id === player.id);
-            return (
-              <LeaderboardRow
-                key={player.id}
-                rank={rank}
-                player={player}
-                score={score}
-                picks={playerDraftPicks}
-                playerPicks={playerPicksList}
-                captainPickId={captainPick?.player_api_id}
-                teams={teams}
-                players={allPlayers}
-                isExpanded={expandedId === player.id}
-                onToggle={() => setExpandedId(expandedId === player.id ? null : player.id)}
-                isHost={isHost}
-                onOverride={handleOverride}
-              />
-            );
-          })
-        )}
-      </div>
+      {scoresLoading ? (
+        <div className="loading"><div className="spinner" /></div>
+      ) : leaderboardEntries.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state__icon">🏆</div>
+          <div className="empty-state__text">No scores yet</div>
+        </div>
+      ) : (
+        <div>
+          {leaderboardEntries.map(({ player, score }, i) => (
+            <LeaderboardRow
+              key={player.id}
+              rank={i + 1}
+              player={player}
+              score={score}
+              picks={picks}
+              playerPicks={playerPicksAll}
+              captainPickId={captainMap[player.id]}
+              teams={teams}
+              players={allPlayers}
+              isExpanded={expandedRow === player.id}
+              onToggle={() => setExpandedRow(expandedRow === player.id ? null : player.id)}
+              isHost={isHost}
+              onOverride={isHost ? handleOverride : null}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Host Controls */}
       {isHost && (
-        <div className="card">
-          <div className="card-title">🎛️ Host Controls</div>
+        <div className="card mt-24">
+          <div className="section-header">Host Controls</div>
 
-          {/* Apply Team Result */}
-          <div className="mb-6">
-            <div className="text-sm font-semibold mb-3">Apply Team Result</div>
-            <div className="flex gap-2 flex-wrap mb-2">
-              <select
-                className="input"
-                style={{ flex: 1, minWidth: 160 }}
-                value={selectedResultTeam}
-                onChange={(e) => setSelectedResultTeam(e.target.value)}
-              >
+          {hostMsg && (
+            <div style={{ padding: '10px 14px', background: 'var(--border)', borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: '0.85rem', color: 'var(--success)' }}>
+              {hostMsg}
+            </div>
+          )}
+
+          {/* Add Team Result */}
+          <div style={{ marginBottom: 20 }}>
+            <div className="label">Add Team Result</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <select className="select" style={{ flex: 1 }} value={selectedTeamId} onChange={e => setSelectedTeamId(e.target.value)}>
                 <option value="">Select team...</option>
-                {teams.map((t) => (
+                {teams.map(t => (
                   <option key={t.api_id} value={t.api_id}>{t.name}</option>
                 ))}
               </select>
-              <select
-                className="input"
-                style={{ flex: 1, minWidth: 180 }}
-                value={selectedResultType}
-                onChange={(e) => setSelectedResultType(e.target.value)}
-              >
-                <option value="">Select result...</option>
-                {RESULT_TYPES.map((rt) => (
-                  <option key={rt.value} value={rt.value}>{rt.label}</option>
+              <select className="select" style={{ flex: 1 }} value={selectedResultType} onChange={e => setSelectedResultType(e.target.value)}>
+                {RESULT_TYPES.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
                 ))}
               </select>
-              <button
-                className="btn btn-primary"
-                onClick={handleApplyResult}
-                disabled={applyingResult || !selectedResultTeam || !selectedResultType}
-              >
-                {applyingResult ? '...' : 'Apply'}
+              <button className="btn btn-primary" onClick={handleAddTeamResult} disabled={!selectedTeamId || hostLoading}>
+                Apply
               </button>
             </div>
-            {resultMsg && <div className="text-success text-sm">{resultMsg}</div>}
           </div>
 
-          <div className="divider" />
-
-          {/* Apply Player Bonus */}
+          {/* Add Player Bonus */}
           <div>
-            <div className="text-sm font-semibold mb-3">Apply Player Bonus</div>
-            <div className="flex gap-2 flex-wrap mb-2">
-              <select
-                className="input"
-                style={{ flex: 1, minWidth: 160 }}
-                value={bonusPlayerId}
-                onChange={(e) => setBonusPlayerId(e.target.value)}
-              >
+            <div className="label">Add Player Bonus</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <select className="select" style={{ flex: 1 }} value={bonusPlayerId} onChange={e => setBonusPlayerId(e.target.value)}>
                 <option value="">Select player...</option>
-                {players.map((p) => (
+                {players.map(p => (
                   <option key={p.id} value={p.id}>{p.player_name}</option>
                 ))}
               </select>
               <input
-                className="input"
-                style={{ maxWidth: 100 }}
                 type="number"
+                className="input"
+                style={{ width: 100 }}
                 placeholder="Points"
                 value={bonusPoints}
-                onChange={(e) => setBonusPoints(e.target.value)}
+                onChange={e => setBonusPoints(e.target.value)}
               />
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
               <input
-                className="input"
-                style={{ flex: 1, minWidth: 120 }}
                 type="text"
-                placeholder="Description"
-                value={bonusNote}
-                onChange={(e) => setBonusNote(e.target.value)}
+                className="input"
+                placeholder="Description (optional)"
+                value={bonusDesc}
+                onChange={e => setBonusDesc(e.target.value)}
               />
-              <button
-                className="btn btn-primary"
-                onClick={handleApplyBonus}
-                disabled={applyingBonus || !bonusPlayerId || !bonusPoints}
-              >
-                {applyingBonus ? '...' : 'Apply'}
+              <button className="btn btn-primary" onClick={handleAddBonus} disabled={!bonusPlayerId || !bonusPoints || hostLoading}>
+                Add Bonus
               </button>
             </div>
-            {bonusMsg && <div className="text-success text-sm">{bonusMsg}</div>}
           </div>
         </div>
       )}

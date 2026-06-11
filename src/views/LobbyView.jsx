@@ -1,121 +1,154 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { getSession } from '../lib/session';
 import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
+import { getSession } from '../lib/session';
+import { supabase } from '../lib/supabase';
 import CopyCode from '../components/CopyCode';
 
 export default function LobbyView() {
   const { gameId } = useParams();
   const navigate = useNavigate();
-  const session = getSession();
   const { game, loading: gameLoading } = useGame(gameId);
   const { players, loading: playersLoading } = usePlayers(gameId);
-
+  const session = getSession();
   const isHost = session?.hostToken && game?.host_token === session.hostToken;
 
   // Navigate when game status changes from lobby
   useEffect(() => {
-    if (!game) return;
-    if (game.status === 'drafting_teams') {
-      navigate(`/draft/${gameId}`);
-    } else if (game.status !== 'lobby') {
-      navigate(`/draft/${gameId}`);
+    if (game && game.status !== 'lobby') {
+      navigate(`/draft/${gameId}`, { replace: true });
     }
-  }, [game?.status, gameId, navigate]);
+  }, [game, gameId, navigate]);
 
   async function handleStartDraft() {
-    await supabase
+    if (players.length < 1) {
+      alert('Need at least 1 player to start the draft.');
+      return;
+    }
+    const { error } = await supabase
       .from('games')
       .update({ status: 'drafting_teams' })
       .eq('id', gameId);
+    if (error) alert('Failed to start draft: ' + error.message);
   }
 
   if (gameLoading) {
-    return <div className="loading-page"><div className="spinner" /></div>;
+    return (
+      <div className="loading">
+        <div className="spinner" />
+        Loading lobby...
+      </div>
+    );
   }
 
   if (!game) {
     return (
-      <div className="page-center">
-        <p className="text-muted">Game not found.</p>
+      <div className="page page-narrow">
+        <div className="empty-state">
+          <div className="empty-icon">❌</div>
+          <p>Game not found.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="page">
-      <div style={{ maxWidth: '480px', margin: '0 auto' }}>
-        <div className="text-center" style={{ marginBottom: '32px' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🏆</div>
-          <h1 style={{ color: 'var(--gold)' }}>Game Lobby</h1>
-          <p className="text-muted text-sm">Share the code below so friends can join</p>
-        </div>
+    <div className="page page-narrow">
+      <h1 className="page-title">Game Lobby</h1>
 
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <div className="section-title">Join Code</div>
-          <CopyCode code={game.join_code} />
-        </div>
+      {/* Join code */}
+      <CopyCode code={game.join_code} />
 
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <div className="section-title">
+      {/* Players list */}
+      <div className="card mt-24">
+        <div className="flex items-center justify-between mb-16">
+          <span className="section-title" style={{ margin: 0 }}>
             Players ({players.length})
-          </div>
-          {playersLoading ? (
-            <div className="spinner" />
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {players.map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '10px 12px',
-                    background: p.id === session?.playerId ? 'rgba(255,215,0,0.08)' : 'var(--border)',
-                    borderRadius: '8px',
-                    border: p.id === session?.playerId ? '1px solid rgba(255,215,0,0.3)' : '1px solid transparent',
-                  }}
-                >
-                  <span style={{ fontSize: '1.1rem' }}>{p.is_host ? '👑' : '👤'}</span>
-                  <span style={{ fontWeight: 600, flex: 1 }}>{p.player_name}</span>
-                  {p.is_host && <span className="badge badge-gold">Host</span>}
-                  {p.id === session?.playerId && !p.is_host && (
-                    <span className="badge badge-info">You</span>
-                  )}
-                  {p.id === session?.playerId && p.is_host && (
-                    <span className="badge badge-info">You</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          </span>
+          <span className="badge badge-muted">
+            Waiting for host...
+          </span>
         </div>
 
-        {isHost ? (
-          <div style={{ textAlign: 'center' }}>
-            <button
-              className="btn btn-primary btn-lg w-full"
-              onClick={handleStartDraft}
-              disabled={players.length < 2}
-            >
-              Start Draft 🚀
-            </button>
-            {players.length < 2 && (
-              <p className="text-muted text-sm" style={{ marginTop: '8px' }}>
-                Need at least 2 players to start
-              </p>
-            )}
+        {playersLoading ? (
+          <div className="loading" style={{ padding: 24 }}>
+            <div className="spinner" />
           </div>
         ) : (
-          <div className="card text-center">
-            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
-            <p className="text-muted">Waiting for the host to start the draft...</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {players.map((player) => (
+              <div
+                key={player.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(42,42,58,0.3)',
+                  border: `1px solid ${player.id === session?.playerId ? 'rgba(255,215,0,0.3)' : 'var(--border)'}`,
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: player.is_host ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  {player.is_host ? '👑' : '👤'}
+                </div>
+                <span style={{ flex: 1, fontWeight: 600, color: player.id === session?.playerId ? 'var(--gold)' : 'var(--text)' }}>
+                  {player.player_name}
+                  {player.id === session?.playerId && (
+                    <span className="text-muted text-xs" style={{ marginLeft: 8 }}>(you)</span>
+                  )}
+                </span>
+                {player.is_host && (
+                  <span className="badge badge-gold">HOST</span>
+                )}
+              </div>
+            ))}
+
+            {players.length === 0 && (
+              <div className="empty-state" style={{ padding: 24 }}>
+                <p>No players yet</p>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Host actions */}
+      {isHost ? (
+        <div className="mt-24">
+          <button
+            className="btn btn-primary btn-full btn-lg"
+            onClick={handleStartDraft}
+            disabled={players.length < 1}
+          >
+            🚀 Start Draft ({players.length} player{players.length !== 1 ? 's' : ''})
+          </button>
+          <p className="text-muted text-sm text-center mt-8">
+            All players should join before starting the draft
+          </p>
+        </div>
+      ) : (
+        <div className="card mt-24" style={{ textAlign: 'center', padding: 24 }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>⏳</div>
+          <p style={{ fontWeight: 600 }}>Waiting for host to start the draft...</p>
+          <p className="text-muted text-sm mt-8">
+            The host will start the draft once everyone has joined.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
