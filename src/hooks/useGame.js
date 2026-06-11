@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-/**
- * Loads a game row by id and subscribes to realtime updates.
- * @param {string} gameId
- * @returns {{ game: object|null, loading: boolean }}
- */
 export function useGame(gameId) {
   const [game, setGame] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,41 +8,35 @@ export function useGame(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let cancelled = false;
+    let isMounted = true;
 
-    async function load() {
-      setLoading(true);
+    async function fetchGame() {
       const { data, error } = await supabase
         .from('games')
         .select('*')
         .eq('id', gameId)
         .single();
-      if (!cancelled) {
+      if (isMounted) {
         if (!error) setGame(data);
         setLoading(false);
       }
     }
 
-    load();
+    fetchGame();
 
     const channel = supabase
       .channel(`game-${gameId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'games',
-          filter: `id=eq.${gameId}`,
-        },
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) setGame(payload.new);
+          if (isMounted) setGame(payload.new);
         }
       )
       .subscribe();
 
     return () => {
-      cancelled = true;
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);

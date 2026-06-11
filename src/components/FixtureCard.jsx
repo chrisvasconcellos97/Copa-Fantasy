@@ -1,78 +1,56 @@
-export default function FixtureCard({ fixture, myTeamApiIds = [], isLive = false }) {
-  const homeId = String(fixture?.home_team_api_id || '');
-  const awayId = String(fixture?.away_team_api_id || '');
-  const myTeamIds = myTeamApiIds.map(String);
-  const isMyMatch = myTeamIds.includes(homeId) || myTeamIds.includes(awayId);
+export default function FixtureCard({ fixture, myTeamApiIds = [], isLive }) {
+  const myTeams = new Set(myTeamApiIds);
+  const homeIsMine = myTeams.has(fixture.home_team_api_id);
+  const awayIsMine = myTeams.has(fixture.away_team_api_id);
+  const isMyFixture = homeIsMine || awayIsMine;
 
   const classes = [
     'fixture-card',
-    isMyMatch ? 'my-team' : '',
-    isLive ? 'live' : '',
-  ].filter(Boolean).join(' ');
+    isMyFixture ? 'fixture-card--my-team' : '',
+    isLive ? 'fixture-card--live' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const hasScore =
-    fixture?.home_score !== null &&
-    fixture?.home_score !== undefined &&
-    fixture?.away_score !== null &&
-    fixture?.away_score !== undefined;
-
-  const kickoff = fixture?.kickoff_at
-    ? new Date(fixture.kickoff_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '--:--';
-
-  const homeFallback = `https://ui-avatars.com/api/?name=H&background=2a2a3a&color=e8e8f0&size=32`;
-  const awayFallback = `https://ui-avatars.com/api/?name=A&background=2a2a3a&color=e8e8f0&size=32`;
+    fixture.home_score != null && fixture.away_score != null;
 
   return (
     <div className={classes}>
-      <div className="fixture-teams">
-        {/* Home */}
-        <div className="fixture-team">
-          <img
-            src={fixture?.home_logo_url || homeFallback}
-            alt={fixture?.home_team_name || 'Home'}
-            className="fixture-logo"
-            onError={(e) => { e.target.src = homeFallback; }}
-          />
-          <span
-            className="fixture-team-name"
-            style={{ color: myTeamIds.includes(homeId) ? 'var(--gold)' : 'var(--text)' }}
-          >
-            {fixture?.home_team_name || `Team ${homeId}`}
-          </span>
-        </div>
+      <div className={`fixture-card__team${homeIsMine ? ' text-gold' : ''}`}>
+        {fixture.home_logo_url ? (
+          <img className="fixture-card__logo" src={fixture.home_logo_url} alt={fixture.home_team_name || ''} />
+        ) : (
+          <span style={{ fontSize: '1.2rem' }}>🏴</span>
+        )}
+        <span className="fixture-card__team-name">{fixture.home_team_name || fixture.home_team_api_id}</span>
+      </div>
 
-        {/* Score / Time */}
-        <div style={{ textAlign: 'center', minWidth: 64 }}>
-          {isLive && (
-            <div style={{ marginBottom: 2 }}>
-              <span className="badge badge-live">LIVE</span>
-            </div>
-          )}
-          {hasScore ? (
-            <div className="fixture-score">
-              {fixture.home_score} – {fixture.away_score}
-            </div>
-          ) : (
-            <div className="fixture-time">{kickoff}</div>
-          )}
-        </div>
+      <div className={`fixture-card__score${hasScore ? '' : ' fixture-card__score--pending'}`}>
+        {isLive && (
+          <div style={{ marginBottom: '2px' }}>
+            <span className="badge badge-live" style={{ fontSize: '0.6rem' }}>LIVE</span>
+          </div>
+        )}
+        {hasScore ? (
+          <span>{fixture.home_score} – {fixture.away_score}</span>
+        ) : (
+          <span>vs</span>
+        )}
+        {fixture.kickoff_at && !hasScore && (
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            {new Date(fixture.kickoff_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        )}
+      </div>
 
-        {/* Away */}
-        <div className="fixture-team away">
-          <img
-            src={fixture?.away_logo_url || awayFallback}
-            alt={fixture?.away_team_name || 'Away'}
-            className="fixture-logo"
-            onError={(e) => { e.target.src = awayFallback; }}
-          />
-          <span
-            className="fixture-team-name"
-            style={{ color: myTeamIds.includes(awayId) ? 'var(--gold)' : 'var(--text)' }}
-          >
-            {fixture?.away_team_name || `Team ${awayId}`}
-          </span>
-        </div>
+      <div className={`fixture-card__team fixture-card__team--away${awayIsMine ? ' text-gold' : ''}`}>
+        {fixture.away_logo_url ? (
+          <img className="fixture-card__logo" src={fixture.away_logo_url} alt={fixture.away_team_name || ''} />
+        ) : (
+          <span style={{ fontSize: '1.2rem' }}>🏴</span>
+        )}
+        <span className="fixture-card__team-name">{fixture.away_team_name || fixture.away_team_api_id}</span>
       </div>
     </div>
   );

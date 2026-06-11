@@ -1,7 +1,3 @@
-// ============================================================
-// Copa Fantasy 2026 – Scoring Logic
-// ============================================================
-
 export const TEAM_POINTS = {
   group_win: 3,
   group_draw: 1,
@@ -26,43 +22,36 @@ export const PLAYER_POINTS = {
 };
 
 /**
- * Compute the total fantasy points for a player given their match events.
- *
- * @param {Array<{type: string, detail?: string}>} events – match_events rows
- * @returns {number} total points
+ * Compute a player's score from an array of match events.
+ * Each event should have { type, detail } where type is e.g. 'Goal', 'Card', 'subst'
  */
 export function computePlayerScore(events) {
-  if (!events || events.length === 0) return 0;
-
   let total = 0;
+  const breakdown = {};
+
+  const add = (key, points) => {
+    total += points;
+    breakdown[key] = (breakdown[key] || 0) + points;
+  };
+
   for (const event of events) {
     const type = (event.type || '').toLowerCase();
     const detail = (event.detail || '').toLowerCase();
 
     if (type === 'goal') {
-      // Own goals don't count for the player
       if (detail !== 'own goal') {
-        total += PLAYER_POINTS.goal;
+        add('goal', PLAYER_POINTS.goal);
       }
-    } else if (type === 'assist') {
-      total += PLAYER_POINTS.assist;
     } else if (type === 'card') {
       if (detail === 'yellow card') {
-        total += PLAYER_POINTS.yellow_card;
-      } else if (detail === 'red card' || detail === 'second yellow') {
-        total += PLAYER_POINTS.red_card;
+        add('yellow_card', PLAYER_POINTS.yellow_card);
+      } else if (detail === 'red card' || detail === 'second yellow card') {
+        add('red_card', PLAYER_POINTS.red_card);
       }
-    } else if (type === 'clean_sheet_gk') {
-      total += PLAYER_POINTS.clean_sheet_gk;
-    } else if (type === 'clean_sheet_def') {
-      total += PLAYER_POINTS.clean_sheet_def;
-    } else if (type === 'motm') {
-      total += PLAYER_POINTS.motm;
-    } else if (type === 'top_scorer') {
-      total += PLAYER_POINTS.top_scorer;
-    } else if (type === 'golden_boot') {
-      total += PLAYER_POINTS.golden_boot;
+    } else if (type === 'assist') {
+      add('assist', PLAYER_POINTS.assist);
     }
   }
-  return total;
+
+  return { total, breakdown };
 }

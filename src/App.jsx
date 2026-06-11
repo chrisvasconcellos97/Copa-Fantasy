@@ -1,17 +1,21 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
-import HomeView from './views/HomeView.jsx';
-import LobbyView from './views/LobbyView.jsx';
-import DraftView from './views/DraftView.jsx';
-import MatchCenterView from './views/MatchCenterView.jsx';
-import LeaderboardView from './views/LeaderboardView.jsx';
+import HomeView from './views/HomeView';
+import LobbyView from './views/LobbyView';
+import DraftView from './views/DraftView';
+import MatchCenterView from './views/MatchCenterView';
+import LeaderboardView from './views/LeaderboardView';
 
 function Nav() {
   return (
     <nav className="nav">
-      <NavLink to="/" className="nav-brand">⚽ Copa Fantasy 2026</NavLink>
+      <NavLink to="/" className="nav-logo">
+        ⚽ Copa Fantasy
+      </NavLink>
       <div className="nav-links">
-        <NavLink to="/matches" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+        <NavLink
+          to="/matches"
+          className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+        >
           Matches
         </NavLink>
       </div>

@@ -1,105 +1,180 @@
-import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
-import { getOrCreateToken } from '../lib/session'
-import FixtureCard from '../components/FixtureCard'
-import EventTicker from '../components/EventTicker'
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import FixtureCard from '../components/FixtureCard';
+import EventTicker from '../components/EventTicker';
 
-const LIVE_STATUSES = ['1H', '2H', 'ET', 'P', 'LIVE', 'HT']
-const FINISHED_STATUSES = ['FT', 'AET', 'PEN']
+function groupByDate(fixtures) {
+  const groups = {};
+  for (const f of fixtures) {
+    const date = f.kickoff_at
+      ? new Date(f.kickoff_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+      : 'TBD';
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(f);
+  }
+  return groups;
+}
 
 export default function MatchCenterView() {
-  const [fixtures, setFixtures] = useState([])
-  const [liveEvents, setLiveEvents] = useState([])
-  const [teams, setTeams] = useState([])
-  const [myTeamApiIds, setMyTeamApiIds] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const token = getOrCreateToken()
+  const [fixtures, setFixtures] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedFixture, setExpandedFixture] = useState(null);
 
-  const loadFixtures = useCallback(async () => {
-    const { data } = await supabase.from('fixtures').select('*').order('kickoff', { ascending: true })
-    if (data) { setFixtures(data); setLastUpdated(new Date()) }
-  }, [])
+  const myPlayerId = localStorage.getItem('copa_player_id');
+  const gameId = localStorage.getItem('copa_game_id');
 
-  const loadLiveEvents = useCallback(async (currentFixtures) => {
-    const liveF = (currentFixtures || fixtures).filter(f => LIVE_STATUSES.includes(f.status_short))
-    if (liveF.length === 0) { setLiveEvents([]); return }
-    const ids = liveF.map(f => f.api_id)
-    const { data } = await supabase.from('match_events').select('*').in('fixture_api_id', ids)
-      .order('elapsed', { ascending: false }).limit(30)
-    if (data) setLiveEvents(data)
-  }, [fixtures])
+  const [myTeamApiIds, setMyTeamApiIds] = useState([]);
+  const [myPlayerApiIds, setMyPlayerApiIds] = useState([]);
 
   useEffect(() => {
-    async function init() {
-      setLoading(true)
-      const { data: fixturesData } = await supabase.from('fixtures').select('*').order('kickoff', { ascending: true })
-      if (fixturesData) { setFixtures(fixturesData); setLastUpdated(new Date()); loadLiveEvents(fixturesData) }
-      const { data: teamsData } = await supabase.from('teams').select('*')
-      if (teamsData) setTeams(teamsData)
-      const { data: gp } = await supabase.from('game_players').select('id').eq('session_token', token)
-      if (gp && gp.length > 0) {
-        const ids = gp.map(p => p.id)
-        const { data: myPicks } = await supabase.from('draft_picks').select('team_api_id').in('player_id', ids)
-        if (myPicks) setMyTeamApiIds(myPicks.map(p => p.team_api_id))
-      }
-      setLoading(false)
+    async function loadUserContext() {
+      if (!myPlayerId || !gameId) return;
+      const { data: draftPicks } = await supabase
+        .from('draft_picks')
+        .select('team_api_id')
+        .eq('game_id', gameId)
+        .eq('game_player_id', myPlayerId);
+      setMyTeamApiIds((draftPicks || []).map((p) => p.team_api_id));
+
+      const { data: playerPicks } = await supabase
+        .from('player_picks')
+        .select('player_api_id')
+        .eq('game_id', gameId)
+        .eq('game_player_id', myPlayerId);
+      setMyPlayerApiIds((playerPicks || []).map((p) => p.player_api_id));
     }
-    init()
-  }, [token])
+    loadUserContext();
+  }, [myPlayerId, gameId]);
 
   useEffect(() => {
-    const interval = setInterval(loadFixtures, 30000)
-    return () => clearInterval(interval)
-  }, [loadFixtures])
+    async function loadFixtures() {
+      const { data } = await supabase
+        .from('fixtures')
+        .select('*')
+        .order('kickoff_at', { ascending: true });
+      setFixtures(data || []);
+      setLoading(false);
+    }
+    loadFixtures();
+
+    const sub = supabase.channel('fixtures-live')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'fixtures' }, (payload) => {
+        setFixtures((prev) => prev.map((f) => f.id === payload.new.id ? payload.new : f));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fixtures' }, (payload) => {
+        setFixtures((prev) => [...prev, payload.new]);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, []);
 
   useEffect(() => {
-    if (fixtures.length > 0) loadLiveEvents(fixtures)
-  }, [fixtures])
+    async function loadEvents() {
+      const liveIds = fixtures
+        .filter((f) => f.status === '1H' || f.status === '2H' || f.status === 'HT' || f.status === 'ET')
+        .map((f) => f.api_id);
+      if (!liveIds.length) { setEvents([]); return; }
 
-  const teamsById = Object.fromEntries(teams.map(t => [t.api_id, t]))
-  const enrich = f => ({ ...f, home_team_name: teamsById[f.home_team_api_id]?.name, away_team_name: teamsById[f.away_team_api_id]?.name })
+      const { data } = await supabase
+        .from('match_events')
+        .select('*')
+        .in('fixture_api_id', liveIds)
+        .order('minute', { ascending: true });
+      setEvents(data || []);
+    }
 
-  const liveF = fixtures.filter(f => LIVE_STATUSES.includes(f.status_short)).map(enrich)
-  const upcomingF = fixtures.filter(f => !LIVE_STATUSES.includes(f.status_short) && !FINISHED_STATUSES.includes(f.status_short)).map(enrich)
-  const finishedF = fixtures.filter(f => FINISHED_STATUSES.includes(f.status_short)).map(enrich).reverse()
+    if (fixtures.length) loadEvents();
 
-  if (loading) return <div className="loading-screen"><div className="spinner" /><span>Loading matches...</span></div>
+    const sub = supabase.channel('match-events-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_events' }, (payload) => {
+        setEvents((prev) => [...prev, payload.new]);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, [fixtures]);
+
+  const liveFixtures = fixtures.filter((f) => ['1H', '2H', 'HT', 'ET', 'LIVE'].includes(f.status));
+  const grouped = groupByDate(fixtures.filter((f) => !['1H', '2H', 'HT', 'ET', 'LIVE'].includes(f.status)));
+
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner" />
+        <p>Loading matches…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="view">
-      <div className="view-header">
-        <div>
-          <div className="view-title">Match Center</div>
-          {lastUpdated && <div className="view-subtitle">Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>}
-        </div>
+      <div style={{ marginBottom: 16 }}>
+        <h1 style={{ fontSize: '1.3rem', fontWeight: 800 }}>Match Center</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>World Cup 2026</p>
       </div>
-      {liveEvents.length > 0 && <EventTicker events={liveEvents} myTeamApiIds={myTeamApiIds} />}
-      {liveF.length > 0 && (
-        <div className="match-section">
-          <div className="match-section-title live">Live Now</div>
-          {liveF.map(f => <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive={true} />)}
+
+      {liveFixtures.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div className="section-header" style={{ color: '#22c55e' }}>🔴 LIVE</div>
+          {liveFixtures.map((f) => (
+            <div key={f.id}>
+              <FixtureCard
+                fixture={f}
+                myTeamApiIds={myTeamApiIds}
+                isLive
+              />
+              {expandedFixture === f.id ? (
+                <div>
+                  <EventTicker
+                    events={events.filter((e) => String(e.fixture_api_id) === String(f.api_id))}
+                    myPlayerApiIds={myPlayerApiIds}
+                    myTeamApiIds={myTeamApiIds}
+                  />
+                  <button
+                    style={{ width: '100%', padding: '6px', fontSize: '0.8rem', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 8 }}
+                    onClick={() => setExpandedFixture(null)}
+                  >
+                    ▲ Hide events
+                  </button>
+                </div>
+              ) : (
+                <button
+                  style={{ width: '100%', padding: '6px', fontSize: '0.8rem', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 8 }}
+                  onClick={() => setExpandedFixture(f.id)}
+                >
+                  ▼ Show events
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
-      {upcomingF.length > 0 && (
-        <div className="match-section">
-          <div className="match-section-title">Upcoming</div>
-          {upcomingF.map(f => <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive={false} />)}
-        </div>
-      )}
-      {finishedF.length > 0 && (
-        <div className="match-section">
-          <div className="match-section-title">Results</div>
-          {finishedF.slice(0, 20).map(f => <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive={false} />)}
-        </div>
-      )}
-      {fixtures.length === 0 && (
+
+      {fixtures.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-icon">Calendar</div>
-          <div>No fixtures loaded yet</div>
-          <div style={{ fontSize: 12, marginTop: 8, color: 'var(--muted)' }}>Run the backfill script to import fixtures</div>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>📅</div>
+          <p>No fixtures loaded yet.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 6 }}>
+            Run the backfill script to populate matches.
+          </p>
         </div>
+      ) : (
+        Object.entries(grouped).map(([date, dayFixtures]) => (
+          <div key={date} style={{ marginBottom: 16 }}>
+            <div className="section-header">{date}</div>
+            {dayFixtures.map((f) => (
+              <FixtureCard
+                key={f.id}
+                fixture={f}
+                myTeamApiIds={myTeamApiIds}
+                isLive={false}
+              />
+            ))}
+          </div>
+        ))
       )}
     </div>
-  )
+  );
 }

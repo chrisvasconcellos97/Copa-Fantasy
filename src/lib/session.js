@@ -1,30 +1,24 @@
-import { v4 as uuidv4 } from 'uuid';
+const KEY = 'copa_fantasy_session'
 
-const TOKEN_KEY = 'copa_session_token';
-const NAME_KEY = 'copa_player_name';
-const GAME_KEY = 'copa_game_id';
+export function getSession() {
+  try { return JSON.parse(localStorage.getItem(KEY)) } catch { return null }
+}
+
+export function setSession(data) {
+  localStorage.setItem(KEY, JSON.stringify(data))
+}
+
+export function clearSession() {
+  localStorage.removeItem(KEY)
+}
 
 export function getOrCreateToken() {
-  let token = localStorage.getItem(TOKEN_KEY);
-  if (!token) {
-    token = uuidv4();
-    localStorage.setItem(TOKEN_KEY, token);
-  }
-  return token;
+  const s = getSession() || {}
+  if (!s.token) { s.token = crypto.randomUUID(); setSession(s) }
+  return s.token
 }
 
-export function setPlayerName(name) {
-  localStorage.setItem(NAME_KEY, name);
-}
-
-export function getPlayerName() {
-  return localStorage.getItem(NAME_KEY) || '';
-}
-
-export function setGameId(id) {
-  localStorage.setItem(GAME_KEY, id);
-}
-
-export function getGameId() {
-  return localStorage.getItem(GAME_KEY) || null;
-}
+export function getPlayerName() { return getSession()?.playerName || '' }
+export function setPlayerName(name) { setSession({ ...getSession(), playerName: name }) }
+export function getGameId() { return getSession()?.gameId || null }
+export function setGameId(id) { setSession({ ...getSession(), gameId: id }) }

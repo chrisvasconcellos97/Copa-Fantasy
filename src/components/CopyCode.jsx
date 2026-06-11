@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export default function CopyCode({ code }) {
   const [copied, setCopied] = useState(false);
@@ -20,14 +20,12 @@ export default function CopyCode({ code }) {
   }
 
   return (
-    <div className="copy-code-box">
-      <div className="copy-code-text" onClick={handleCopy} title="Click to copy">
-        {code}
-      </div>
-      <button className="btn btn-outline btn-sm" onClick={handleCopy}>
+    <div className="copy-code">
+      <div className="label">Game Code</div>
+      <div className="copy-code__value">{code}</div>
+      <button className="btn btn-secondary" onClick={handleCopy}>
         {copied ? '✓ Copied!' : '📋 Copy Code'}
       </button>
-      <p className="text-xs text-muted">Share this code with your friends to join</p>
     </div>
   );
 }
