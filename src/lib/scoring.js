@@ -22,43 +22,21 @@ export const PLAYER_POINTS = {
 };
 
 /**
- * Compute total score for a player given an array of match_events.
- * Each event: { type, detail }
- * Returns { total, breakdown }
+ * Computes a player's total score from an array of match events.
+ * Each event should have a `type` field matching keys in PLAYER_POINTS.
  */
 export function computePlayerScore(events) {
-  const breakdown = {};
-  let total = 0;
-
-  for (const event of events) {
-    const type = event.type ? event.type.toLowerCase() : '';
-    const detail = event.detail ? event.detail.toLowerCase() : '';
-
-    let key = null;
-
-    if (type === 'goal' && detail !== 'own goal' && detail !== 'penalty missed') {
-      key = 'goal';
-    } else if (type === 'card') {
-      if (detail === 'yellow card') key = 'yellow_card';
-      else if (detail === 'red card') key = 'red_card';
-    } else if (type === 'assist') {
-      key = 'assist';
-    } else if (type === 'clean_sheet') {
-      if (detail === 'gk') key = 'clean_sheet_gk';
-      else key = 'clean_sheet_def';
-    } else if (type === 'motm') {
-      key = 'motm';
-    } else if (type === 'top_scorer') {
-      key = 'top_scorer';
-    } else if (type === 'golden_boot') {
-      key = 'golden_boot';
+  if (!events || events.length === 0) return 0;
+  return events.reduce((total, event) => {
+    const pts = PLAYER_POINTS[event.type];
+    if (pts !== undefined) return total + pts;
+    // Handle detail-based scoring
+    if (event.type === 'Goal') return total + PLAYER_POINTS.goal;
+    if (event.type === 'Assist') return total + PLAYER_POINTS.assist;
+    if (event.type === 'Card') {
+      if (event.detail === 'Yellow Card') return total + PLAYER_POINTS.yellow_card;
+      if (event.detail === 'Red Card') return total + PLAYER_POINTS.red_card;
     }
-
-    if (key && PLAYER_POINTS[key] !== undefined) {
-      breakdown[key] = (breakdown[key] || 0) + 1;
-      total += PLAYER_POINTS[key];
-    }
-  }
-
-  return { total, breakdown };
+    return total;
+  }, 0);
 }

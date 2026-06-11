@@ -1,22 +1,35 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 export default function SnakeOrderBar({ players, currentPickerIndex, myPlayerId }) {
+  const activeRef = useRef(null);
+
+  useEffect(() => {
+    if (activeRef.current) {
+      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [currentPickerIndex]);
+
+  if (!players || players.length === 0) return null;
+
   return (
     <div className="snake-bar">
-      <span className="text-xs text-muted font-600" style={{ whiteSpace: 'nowrap' }}>PICK ORDER:</span>
-      {players.map((player, idx) => {
-        const isCurrent = idx === currentPickerIndex;
+      {players.map((player, index) => {
+        const isCurrent = index === currentPickerIndex;
         const isMe = player.id === myPlayerId;
-        const cls = [
-          'chip',
-          isCurrent ? 'chip-active' : '',
-          !isCurrent && isMe ? 'chip-mine' : '',
+        const classes = [
+          'snake-chip',
+          isCurrent ? 'current' : '',
+          !isCurrent && isMe ? 'mine' : '',
         ].filter(Boolean).join(' ');
+
         return (
-          <div key={player.id} className={cls}>
-            {isCurrent && <span>👉</span>}
-            {player.player_name}
-            {isMe && !isCurrent && <span className="text-xs">(you)</span>}
+          <div
+            key={player.id}
+            className={classes}
+            ref={isCurrent ? activeRef : null}
+          >
+            {isMe ? '★ ' : ''}{player.player_name}
+            {isCurrent && ' ●'}
           </div>
         );
       })}

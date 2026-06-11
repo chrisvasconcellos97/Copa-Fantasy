@@ -3,44 +3,44 @@ import React from 'react';
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
   const classes = [
     'team-card',
-    selected ? 'selected' : '',
-    taken ? 'taken' : '',
-    disabled && !taken ? 'disabled' : '',
-  ].filter(Boolean).join(' ');
+    selected ? 'team-card--selected' : '',
+    taken ? 'team-card--taken' : '',
+    disabled && !taken ? 'team-card--disabled' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   function handleClick() {
-    if (taken || disabled) return;
-    if (onClick) onClick(team);
+    if (!taken && !disabled && onClick) {
+      onClick(team);
+    }
   }
 
   return (
-    <div className={classes} onClick={handleClick} title={team.name}>
-      <span className="pot-badge">P{team.pot || '?'}</span>
+    <div className={classes} onClick={handleClick} role="button" tabIndex={taken || disabled ? -1 : 0}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}>
       {team.logo_url ? (
         <img
+          className="team-card__logo"
           src={team.logo_url}
           alt={team.name}
+          loading="lazy"
           onError={(e) => { e.target.style.display = 'none'; }}
         />
       ) : (
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            background: 'var(--border)',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.4rem',
-          }}
-        >
+        <div style={{ width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
           🏳️
         </div>
       )}
-      <span className="team-name">{team.name}</span>
-      {taken && takenBy && (
-        <span className="taken-by">{takenBy}</span>
+      <span className="team-card__name">{team.name}</span>
+      {team.pot && (
+        <span className="badge badge-muted" style={{ fontSize: '0.65rem' }}>Pot {team.pot}</span>
+      )}
+      {taken && (
+        <div className="team-card__taken-overlay">
+          <span className="team-card__taken-label">Taken</span>
+          <span className="team-card__taken-by">{takenBy || '—'}</span>
+        </div>
       )}
     </div>
   );

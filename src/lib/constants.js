@@ -23,7 +23,7 @@ export const SCORING = {
 export const RESULT_TYPES = [
   { value: 'group_win', label: 'Group Stage Win (+3)' },
   { value: 'group_draw', label: 'Group Stage Draw (+1)' },
-  { value: 'group_loss', label: 'Group Stage Loss (0)' },
+  { value: 'group_loss', label: 'Group Stage Loss (+0)' },
   { value: 'r32_win', label: 'Round of 32 Win (+5)' },
   { value: 'qf_win', label: 'Quarter-Final Win (+8)' },
   { value: 'sf_win', label: 'Semi-Final Win (+13)' },
@@ -32,37 +32,28 @@ export const RESULT_TYPES = [
 ];
 
 export const BONUS_TYPES = [
-  { value: 'goal', label: 'Goal (+6)' },
-  { value: 'assist', label: 'Assist (+4)' },
-  { value: 'clean_sheet_gk', label: 'GK Clean Sheet (+10)' },
-  { value: 'clean_sheet_def', label: 'Def Clean Sheet (+6)' },
-  { value: 'yellow_card', label: 'Yellow Card (-1)' },
-  { value: 'red_card', label: 'Red Card (-3)' },
   { value: 'motm', label: 'Man of the Match (+5)' },
   { value: 'top_scorer', label: 'Top Scorer Bonus (+15)' },
   { value: 'golden_boot', label: 'Golden Boot (+20)' },
+  { value: 'custom', label: 'Custom Bonus' },
 ];
 
 export const FALLBACK_POTS = {
   1: [
-    'Mexico', 'Canada', 'USA', 'Argentina', 'Brazil',
-    'France', 'England', 'Germany', 'Portugal', 'Netherlands',
-    'Spain', 'Belgium',
+    'Mexico', 'Canada', 'USA', 'Argentina', 'Brazil', 'France',
+    'England', 'Germany', 'Portugal', 'Netherlands', 'Spain', 'Belgium',
   ],
   2: [
-    'Croatia', 'Morocco', 'Colombia', 'Uruguay', 'Switzerland',
-    'Japan', 'Senegal', 'Iran', 'South Korea', 'Ecuador',
-    'Austria', 'Australia',
+    'Croatia', 'Morocco', 'Colombia', 'Uruguay', 'Switzerland', 'Japan',
+    'Senegal', 'Iran', 'South Korea', 'Ecuador', 'Austria', 'Australia',
   ],
   3: [
-    'Norway', 'Panama', 'Egypt', 'Algeria', 'Scotland',
-    'Paraguay', 'Tunisia', 'Ivory Coast', 'Uzbekistan', 'Qatar',
-    'Saudi Arabia', 'South Africa',
+    'Norway', 'Panama', 'Egypt', 'Algeria', 'Scotland', 'Paraguay',
+    'Tunisia', 'Ivory Coast', 'Uzbekistan', 'Qatar', 'Saudi Arabia', 'South Africa',
   ],
   4: [
-    'Jordan', 'Cape Verde', 'Ghana', 'Curaçao', 'Haiti',
-    'New Zealand', 'Bosnia & Herzegovina', 'Sweden', 'Türkiye',
-    'Czechia', 'DR Congo', 'Iraq',
+    'Jordan', 'Cape Verde', 'Ghana', 'Curaçao', 'Haiti', 'New Zealand',
+    'Bosnia & Herzegovina', 'Sweden', 'Türkiye', 'Czechia', 'DR Congo', 'Iraq',
   ],
 };
 
@@ -72,6 +63,6 @@ export function normalizePosition(pos) {
   if (p === 'G' || p === 'GK' || p === 'GOALKEEPER') return 'GK';
   if (p === 'D' || p === 'DEF' || p === 'DEFENDER') return 'DEF';
   if (p === 'M' || p === 'MID' || p === 'MIDFIELDER') return 'MID';
-  if (p === 'F' || p === 'FWD' || p === 'ATTACKER' || p === 'FORWARD') return 'FWD';
-  return pos.slice(0, 3).toUpperCase();
+  if (p === 'F' || p === 'FWD' || p === 'FORWARD' || p === 'ATTACKER') return 'FWD';
+  return p.slice(0, 3);
 }

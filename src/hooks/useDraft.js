@@ -1,24 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 export function useDraft(gameId) {
   const [picks, setPicks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const channelRef = useRef(null);
 
   useEffect(() => {
-    if (!gameId) { setLoading(false); return; }
+    if (!gameId) return;
 
-    let cancelled = false;
+    let mounted = true;
 
     async function load() {
-      setLoading(true);
       const { data, error } = await supabase
         .from('draft_picks')
         .select('*')
         .eq('game_id', gameId)
         .order('pick_number', { ascending: true });
-      if (!cancelled) {
+      if (mounted) {
         if (!error) setPicks(data || []);
         setLoading(false);
       }
@@ -27,12 +25,12 @@ export function useDraft(gameId) {
     load();
 
     const channel = supabase
-      .channel(`draft-${gameId}`)
+      .channel(`draft-picks-${gameId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) {
+          if (mounted) {
             setPicks((prev) => {
               const exists = prev.find((p) => p.id === payload.new.id);
               if (exists) return prev;
@@ -43,10 +41,8 @@ export function useDraft(gameId) {
       )
       .subscribe();
 
-    channelRef.current = channel;
-
     return () => {
-      cancelled = true;
+      mounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);
