@@ -23,56 +23,46 @@ export const PLAYER_POINTS = {
 
 /**
  * Compute a player's score from an array of match events.
- * @param {Array} events - array of match_events rows
- * @returns {{ total: number, breakdown: Object }}
+ * Each event should have: { type, detail, player_api_id }
+ * Returns { total, breakdown }
  */
 export function computePlayerScore(events) {
   const breakdown = {};
   let total = 0;
 
-  for (const event of events) {
-    const type = event.type?.toLowerCase();
-    const detail = event.detail?.toLowerCase() || '';
+  const add = (key, points) => {
+    breakdown[key] = (breakdown[key] || 0) + points;
+    total += points;
+  };
 
-    let key = null;
-    let pts = 0;
+  for (const event of events) {
+    const type = (event.type || '').toLowerCase();
+    const detail = (event.detail || '').toLowerCase();
 
     if (type === 'goal') {
-      if (detail.includes('normal') || detail.includes('penalty') || detail === '') {
-        key = 'goal';
-        pts = PLAYER_POINTS.goal;
+      if (detail !== 'own goal') {
+        add('goal', PLAYER_POINTS.goal);
       }
-    } else if (type === 'assist' || (type === 'goal' && detail === 'assist')) {
-      key = 'assist';
-      pts = PLAYER_POINTS.assist;
+    } else if (type === 'assist' || detail === 'assist') {
+      add('assist', PLAYER_POINTS.assist);
     } else if (type === 'card') {
-      if (detail.includes('yellow') || detail === 'yellow card') {
-        key = 'yellow_card';
-        pts = PLAYER_POINTS.yellow_card;
-      } else if (detail.includes('red') || detail === 'red card') {
-        key = 'red_card';
-        pts = PLAYER_POINTS.red_card;
+      if (detail === 'yellow card') {
+        add('yellow_card', PLAYER_POINTS.yellow_card);
+      } else if (detail === 'red card' || detail === 'second yellow') {
+        add('red_card', PLAYER_POINTS.red_card);
       }
-    } else if (type === 'motm' || type === 'man of the match') {
-      key = 'motm';
-      pts = PLAYER_POINTS.motm;
-    } else if (type === 'clean_sheet_gk') {
-      key = 'clean_sheet_gk';
-      pts = PLAYER_POINTS.clean_sheet_gk;
-    } else if (type === 'clean_sheet_def') {
-      key = 'clean_sheet_def';
-      pts = PLAYER_POINTS.clean_sheet_def;
+    } else if (type === 'motm' || detail === 'man of the match') {
+      add('motm', PLAYER_POINTS.motm);
+    } else if (type === 'clean_sheet') {
+      if (detail === 'gk') {
+        add('clean_sheet_gk', PLAYER_POINTS.clean_sheet_gk);
+      } else {
+        add('clean_sheet_def', PLAYER_POINTS.clean_sheet_def);
+      }
     } else if (type === 'top_scorer') {
-      key = 'top_scorer';
-      pts = PLAYER_POINTS.top_scorer;
+      add('top_scorer', PLAYER_POINTS.top_scorer);
     } else if (type === 'golden_boot') {
-      key = 'golden_boot';
-      pts = PLAYER_POINTS.golden_boot;
-    }
-
-    if (key) {
-      breakdown[key] = (breakdown[key] || 0) + pts;
-      total += pts;
+      add('golden_boot', PLAYER_POINTS.golden_boot);
     }
   }
 

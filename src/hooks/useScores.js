@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.js';
 
 export function useScores(gameId) {
   const [scores, setScores] = useState([]);
@@ -10,10 +10,10 @@ export function useScores(gameId) {
 
     let mounted = true;
 
-    async function load() {
+    async function fetchScores() {
       const { data, error } = await supabase
         .from('user_scores')
-        .select('*')
+        .select('*, game_players(player_name, is_host)')
         .eq('game_id', gameId)
         .order('total_points', { ascending: false });
       if (mounted) {
@@ -22,7 +22,7 @@ export function useScores(gameId) {
       }
     }
 
-    load();
+    fetchScores();
 
     const channel = supabase
       .channel(`user-scores-${gameId}`)
@@ -30,14 +30,14 @@ export function useScores(gameId) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'user_scores', filter: `game_id=eq.${gameId}` },
         () => {
-          if (mounted) load();
+          if (mounted) fetchScores();
         }
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'user_scores', filter: `game_id=eq.${gameId}` },
         () => {
-          if (mounted) load();
+          if (mounted) fetchScores();
         }
       )
       .subscribe();
