@@ -30,6 +30,7 @@ export default function HomeView() {
     setError('');
     try {
       const hostToken = uuidv4();
+      const playerToken = uuidv4();
       const joinCode = generateJoinCode();
 
       // Create game
@@ -43,7 +44,7 @@ export default function HomeView() {
       // Create player
       const { data: gamePlayer, error: playerErr } = await supabase
         .from('game_players')
-        .insert({ game_id: game.id, player_name: createName.trim(), is_host: true })
+        .insert({ game_id: game.id, player_name: createName.trim(), is_host: true, token: playerToken })
         .select()
         .single();
       if (playerErr) throw playerErr;
@@ -84,9 +85,10 @@ export default function HomeView() {
       }
 
       // Create player
+      const playerToken = uuidv4();
       const { data: gamePlayer, error: playerErr } = await supabase
         .from('game_players')
-        .insert({ game_id: game.id, player_name: joinName.trim(), is_host: false })
+        .insert({ game_id: game.id, player_name: joinName.trim(), is_host: false, token: playerToken })
         .select()
         .single();
       if (playerErr) throw playerErr;
