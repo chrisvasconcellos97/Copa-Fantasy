@@ -15,7 +15,7 @@ export function usePlayers(gameId) {
         .from('game_players')
         .select('*')
         .eq('game_id', gameId)
-        .order('joined_at', { ascending: true });
+        .order('created_at', { ascending: true });
       if (isMounted) {
         if (!error && data) setPlayers(data);
         setLoading(false);

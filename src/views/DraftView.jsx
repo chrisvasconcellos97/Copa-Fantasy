@@ -117,12 +117,12 @@ export default function DraftView() {
     async function loadCaptain() {
       const { data } = await supabase
         .from('captain_picks')
-        .select('*')
+        .select('*, player_picks(player_api_id)')
         .eq('game_id', gameId)
         .eq('game_player_id', myPlayerId)
         .maybeSingle();
       if (data) {
-        setCaptainPickId(data.player_api_id);
+        setCaptainPickId(data.player_picks?.player_api_id ?? null);
         setCaptainSaved(true);
       }
     }
@@ -164,6 +164,7 @@ export default function DraftView() {
 
   async function handlePoke(player) {
     await supabase.from('notifications').insert({
+      game_id: gameId,
       game_player_id: player.id,
       type: 'poke',
       message: "It's your turn to pick! 🎯",
@@ -204,27 +205,31 @@ export default function DraftView() {
     const playerIds = selectedPlayerIds[teamApiId] || [];
     if (playerIds.length === 0) return;
 
-    // Remove old picks for this team
+    // Find the draft_pick for this team (links player_picks back to the team)
+    const draftPick = picks.find((p) => p.game_player_id === myPlayerId && p.team_api_id === teamApiId);
+    if (!draftPick) { alert('Draft pick not found for this team'); return; }
+
+    // Remove old picks for this draft_pick
     await supabase
       .from('player_picks')
       .delete()
       .eq('game_id', gameId)
       .eq('game_player_id', myPlayerId)
-      .eq('team_api_id', teamApiId);
+      .eq('draft_pick_id', draftPick.id);
 
     // Insert new picks
     const inserts = playerIds.map((pid) => ({
       game_id: gameId,
       game_player_id: myPlayerId,
+      draft_pick_id: draftPick.id,
       player_api_id: pid,
-      team_api_id: teamApiId,
     }));
     const { error } = await supabase.from('player_picks').insert(inserts);
     if (error) {
       alert('Failed to save: ' + error.message);
     } else {
       setSavedPlayerPicks((prev) => {
-        const filtered = prev.filter((p) => p.team_api_id !== teamApiId);
+        const filtered = prev.filter((p) => p.draft_pick_id !== draftPick.id);
         return [...filtered, ...inserts.map((i, idx) => ({ ...i, id: `temp-${idx}` }))];
       });
     }
@@ -232,7 +237,21 @@ export default function DraftView() {
 
   async function handleSaveCaptain() {
     if (!captainPickId) return;
-    // Remove existing
+    // Find the player_pick row for this player
+    const playerPickRow = savedPlayerPicks.find((p) => p.player_api_id === captainPickId);
+    if (!playerPickRow?.id || playerPickRow.id.startsWith('temp-')) {
+      // Re-fetch from DB to get real id
+      const { data: ppData } = await supabase
+        .from('player_picks')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('game_player_id', myPlayerId)
+        .eq('player_api_id', captainPickId)
+        .maybeSingle();
+      if (!ppData) { alert('Player pick not found'); return; }
+      playerPickRow.id = ppData.id;
+    }
+    // Remove existing captain pick
     await supabase
       .from('captain_picks')
       .delete()
@@ -241,7 +260,7 @@ export default function DraftView() {
     const { error } = await supabase.from('captain_picks').insert({
       game_id: gameId,
       game_player_id: myPlayerId,
-      player_api_id: captainPickId,
+      player_pick_id: playerPickRow.id,
     });
     if (error) {
       alert('Failed to save captain: ' + error.message);
@@ -438,7 +457,8 @@ export default function DraftView() {
           {/* Team tabs */}
           <div className="tabs scroll-x" style={{ marginBottom: 16 }}>
             {myTeams.map((team) => {
-              const savedCount = savedPlayerPicks.filter((p) => p.team_api_id === team.api_id).length;
+              const draftPick = picks.find((p) => p.game_player_id === myPlayerId && p.team_api_id === team.api_id);
+              const savedCount = savedPlayerPicks.filter((p) => p.draft_pick_id === draftPick?.id).length;
               return (
                 <button
                   key={team.api_id}
