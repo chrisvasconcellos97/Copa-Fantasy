@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Mascot from '../components/Mascot';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
@@ -109,7 +110,9 @@ export default function HomeView() {
     <div className="page page-narrow" style={{ paddingTop: 48 }}>
       {/* Hero */}
       <div style={{ textAlign: 'center', marginBottom: 48 }}>
-        <div style={{ fontSize: '4rem', marginBottom: 12 }}>⚽</div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+          <Mascot pose="celebrating" size={110} />
+        </div>
         <h1 style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--gold)', marginBottom: 8 }}>
           Copa Fantasy 2026
         </h1>

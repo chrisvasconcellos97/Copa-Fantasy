@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { FALLBACK_POTS } from '../lib/constants';
 import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
 import TeamCard from '../components/TeamCard';
+import Mascot from '../components/Mascot';
 import PlayerCard from '../components/PlayerCard';
 import ConfirmBar from '../components/ConfirmBar';
 import SnakeOrderBar from '../components/SnakeOrderBar';
@@ -279,8 +280,8 @@ export default function DraftView() {
   if (gameLoading || playersLoading || teamsLoading) {
     return (
       <div className="loading">
-        <div className="spinner" />
-        Loading draft...
+        <Mascot pose="thinking" size={90} />
+        <div style={{ marginTop: 12, color: 'var(--text-muted)' }}>Loading draft...</div>
       </div>
     );
   }
@@ -334,9 +335,12 @@ export default function DraftView() {
                 padding: '12px 16px',
               }}
             >
-              <span style={{ color: 'var(--gold)', fontWeight: 700 }}>
-                🎯 It&apos;s your turn to pick!
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <Mascot pose="excited" size={52} />
+                <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '1.05rem' }}>
+                  It&apos;s your turn to pick!
+                </span>
+              </div>
             </div>
           )}
           {!isMyTurn && !draftComplete && (
