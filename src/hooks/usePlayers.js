@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function usePlayers(gameId) {
@@ -8,52 +8,44 @@ export function usePlayers(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let isMounted = true;
+    let channel;
 
-    async function fetchPlayers() {
+    async function loadPlayers() {
       setLoading(true);
       const { data, error } = await supabase
         .from('game_players')
         .select('*')
         .eq('game_id', gameId)
         .order('joined_at', { ascending: true });
-      if (isMounted) {
-        if (!error) setPlayers(data || []);
-        setLoading(false);
-      }
+      if (!error && data) setPlayers(data);
+      setLoading(false);
     }
 
-    fetchPlayers();
+    loadPlayers();
 
-    const channel = supabase
-      .channel(`game_players:${gameId}`)
+    channel = supabase
+      .channel(`players-${gameId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (isMounted) {
-            setPlayers((prev) => {
-              const exists = prev.find((p) => p.id === payload.new.id);
-              if (exists) return prev;
-              return [...prev, payload.new];
-            });
-          }
+          setPlayers((prev) => {
+            if (prev.find((p) => p.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
         }
       )
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (isMounted) {
-            setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
-          }
+          setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
         }
       )
       .subscribe();
 
     return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [gameId]);
 

@@ -1,54 +1,43 @@
 import React from 'react';
 
-function getIcon(type, detail) {
-  if (type === 'Goal') return detail === 'Own Goal' ? '😬⚽' : '⚽';
-  if (type === 'Card') return detail === 'Red Card' ? '🟥' : '🟨';
-  if (type === 'subst' || type === 'Substitution') return '🔁';
-  if (type === 'Var') return '📺';
-  return '•';
+function eventIcon(type, detail) {
+  const t = (type || '').toLowerCase();
+  const d = (detail || '').toLowerCase();
+  if (t === 'goal') return d.includes('own') ? '⚽(OG)' : '⚽';
+  if (t === 'card') {
+    if (d.includes('yellow')) return '🟨';
+    if (d.includes('red')) return '🟥';
+  }
+  if (t === 'subst') return '🔁';
+  return '📋';
 }
 
-export default function EventTicker({ events = [], myPlayerApiIds = [], myTeamApiIds = [] }) {
-  if (!events.length) {
+export default function EventTicker({ events, myPlayerApiIds, myTeamApiIds }) {
+  if (!events || events.length === 0) {
     return (
-      <div className="empty-state">
-        <div className="text-sm">No events yet</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '8px 0' }}>
+        No events yet.
       </div>
     );
   }
 
   return (
     <div className="event-ticker">
-      {events.map((ev, idx) => {
-        const isMine =
-          myPlayerApiIds.map(String).includes(String(ev.player_api_id)) ||
-          myPlayerApiIds.map(String).includes(String(ev.assist_player_api_id));
-        const isMyTeam = myTeamApiIds.map(String).includes(String(ev.team_api_id));
+      {events.map((event, idx) => {
+        const isMyPlayer = myPlayerApiIds && myPlayerApiIds.includes(event.player_api_id);
+        const isMyTeam = myTeamApiIds && myTeamApiIds.includes(event.team_api_id);
+        const highlight = isMyPlayer || isMyTeam;
 
         return (
-          <div key={ev.id || idx} className={'event-item' + (isMine ? ' mine' : '')}>
-            <span className="event-min">{ev.minute}'</span>
-            <span>{getIcon(ev.type, ev.detail)}</span>
-            <span style={{ flex: 1, fontSize: '0.78rem' }}>
-              <strong>{ev.player_name || `#${ev.player_api_id}`}</strong>
-              {ev.detail && (
-                <span style={{ color: 'var(--text-muted)' }}> · {ev.detail}</span>
-              )}
+          <div key={event.id || idx} className={`event-item${highlight ? ' highlight' : ''}`}>
+            <span className="event-minute">{event.minute ? `${event.minute}'` : '-'}</span>
+            <span style={{ flexShrink: 0 }}>{eventIcon(event.type, event.detail)}</span>
+            <span style={{ flex: 1, fontSize: '0.82rem' }}>
+              {event.player_name || event.player_api_id || '—'}
             </span>
-            {isMyTeam && !isMine && (
-              <span style={{
-                background: 'rgba(255,215,0,0.15)', color: 'var(--gold)',
-                fontSize: '0.65rem', fontWeight: 700,
-                padding: '1px 5px', borderRadius: 999,
-              }}>MY TEAM</span>
-            )}
-            {isMine && (
-              <span style={{
-                background: 'rgba(255,215,0,0.25)', color: 'var(--gold)',
-                fontSize: '0.65rem', fontWeight: 700,
-                padding: '1px 5px', borderRadius: 999,
-              }}>MY PLAYER</span>
-            )}
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+              {event.team_name || ''}
+            </span>
           </div>
         );
       })}

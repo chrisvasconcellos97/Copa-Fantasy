@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useGame(gameId) {
@@ -8,37 +8,34 @@ export function useGame(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let isMounted = true;
+    let channel;
 
-    async function fetchGame() {
+    async function loadGame() {
       setLoading(true);
       const { data, error } = await supabase
         .from('games')
         .select('*')
         .eq('id', gameId)
         .single();
-      if (isMounted) {
-        if (!error) setGame(data);
-        setLoading(false);
-      }
+      if (!error && data) setGame(data);
+      setLoading(false);
     }
 
-    fetchGame();
+    loadGame();
 
-    const channel = supabase
-      .channel(`game:${gameId}`)
+    channel = supabase
+      .channel(`game-${gameId}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         (payload) => {
-          if (isMounted) setGame(payload.new);
+          setGame(payload.new);
         }
       )
       .subscribe();
 
     return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [gameId]);
 

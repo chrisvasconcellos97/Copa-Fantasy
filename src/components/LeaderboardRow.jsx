@@ -1,98 +1,84 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { supabase } from '../lib/supabase.js';
+import { TEAM_POINTS, PLAYER_POINTS } from '../lib/scoring.js';
 
-export default function LeaderboardRow({
-  rank,
-  player,
-  score,
-  picks,
-  playerPicks,
-  captainPickId,
-  teams,
-  players,
-  isExpanded,
-  onToggle,
-  isHost,
-  onOverride,
-}) {
+export default function LeaderboardRow({ rank, player, score, picks, playerPicks, captainPickId, teams, players, isExpanded, onToggle, isHost, onOverride }) {
   const [overrideVal, setOverrideVal] = useState('');
-  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideNote, setOverrideNote] = useState('');
 
-  const teamsById = {};
-  (teams || []).map((t) => { teamsById[t.api_id] = t; });
+  const breakdown = score?.breakdown || {};
+  const totalPoints = score?.total_points ?? 0;
 
-  const rankDisplay = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+  const myTeamPicks = (picks || []).filter(p => p.game_player_id === player?.id && p.pick_type === 'team');
+  const myPlayerPicks = (playerPicks || []).filter(p => p.game_player_id === player?.id && p.pick_type === 'player');
 
-  function handleOverride() {
-    if (!overrideVal) return;
-    onOverride && onOverride(player.id, parseInt(overrideVal, 10), overrideReason);
+  const handleOverride = () => {
+    if (onOverride) onOverride(player.id, parseFloat(overrideVal), overrideNote);
     setOverrideVal('');
-    setOverrideReason('');
-  }
+    setOverrideNote('');
+  };
 
   return (
-    <div className={'lb-row' + (isExpanded ? ' expanded' : '')}>
-      <div className="lb-row-main" onClick={onToggle}>
-        <span className="lb-rank">{rankDisplay}</span>
-        <span className="lb-name">{player?.player_name || player?.name || '—'}</span>
-        <span className="lb-pts">{score?.total_points ?? 0} pts</span>
-        <span className="lb-chevron">{isExpanded ? '▲' : '▼'}</span>
+    <div className={`leaderboard-row card mb-2 ${isExpanded ? 'expanded' : ''}`}>
+      <div className="leaderboard-row-header" onClick={onToggle} role="button" tabIndex={0}
+        onKeyDown={e => e.key === 'Enter' && onToggle()}>
+        <div className="leaderboard-rank text-gold font-bold">#{rank}</div>
+        <div className="leaderboard-name font-bold">{player?.player_name}</div>
+        <div className="leaderboard-points text-gold font-bold">{totalPoints} pts</div>
+        <div className="leaderboard-chevron">{isExpanded ? '▲' : '▼'}</div>
       </div>
       {isExpanded && (
-        <div className="lb-detail">
-          {score?.breakdown && (
-            <div className="lb-score-breakdown">
-              <span>Team pts: {score.breakdown.team_points ?? 0}</span>
-              <span>Player pts: {score.breakdown.player_points ?? 0}</span>
-              {score.breakdown.captain_bonus != null && (
-                <span>Captain bonus: +{score.breakdown.captain_bonus}</span>
-              )}
-              {score.breakdown.override != null && score.breakdown.override !== 0 && (
-                <span>Override: {score.breakdown.override > 0 ? '+' : ''}{score.breakdown.override}</span>
-              )}
+        <div className="leaderboard-breakdown p-2">
+          <div className="mb-2">
+            <h4 className="text-sm text-muted mb-1">Teams</h4>
+            <div className="grid-2">
+              {myTeamPicks.map(pick => {
+                const team = teams?.find(t => t.api_id === pick.team_api_id);
+                const teamBreakdown = breakdown?.teams?.[pick.team_api_id] || {};
+                const teamPts = Object.values(teamBreakdown).reduce((a, b) => a + b, 0);
+                const isCaptain = pick.id === captainPickId;
+                return (
+                  <div key={pick.id} className="breakdown-team-row">
+                    <div className="flex gap-1" style={{ alignItems: 'center' }}>
+                      {team?.logo_url && <img src={team.logo_url} alt={team.name} width={18} height={18} />}
+                      <span className="text-sm">{team?.name} {isCaptain ? '👑' : ''}</span>
+                    </div>
+                    <span className="text-gold text-sm">{isCaptain ? teamPts * 2 : teamPts} pts</span>
+                  </div>
+                );
+              })}
             </div>
-          )}
-          <div className="lb-teams">
-            {(picks || []).map((pk) => {
-              const t = teamsById[pk.team_api_id];
-              return t ? (
-                <span key={pk.id} className="lb-team-chip">{t.name}</span>
-              ) : null;
-            })}
           </div>
-          {captainPickId && (
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-              👑 Captain: {
-                (() => {
-                  const pp = (playerPicks || []).find(
-                    (p) => p.player_api_id === captainPickId || p.api_id === captainPickId
+          {myPlayerPicks.length > 0 && (
+            <div className="mb-2">
+              <h4 className="text-sm text-muted mb-1">Player Bonuses</h4>
+              <div className="grid-2">
+                {myPlayerPicks.map(pick => {
+                  const playerData = players?.find(p => p.api_id === pick.player_api_id);
+                  const bonusPts = breakdown?.players?.[pick.player_api_id] || 0;
+                  return (
+                    <div key={pick.id} className="breakdown-player-row">
+                      <span className="text-sm">{playerData?.name || pick.player_api_id}</span>
+                      <span className="text-gold text-sm">{bonusPts} pts</span>
+                    </div>
                   );
-                  const pl = (players || []).find(
-                    (p) => String(p.api_id) === String(captainPickId)
-                  );
-                  return pp?.name || pl?.name || captainPickId;
-                })()
-              }
+                })}
+              </div>
             </div>
           )}
-          {isHost && onOverride && (
-            <div className="lb-override">
-              <input
-                type="number"
-                placeholder="±pts"
-                value={overrideVal}
-                onChange={(e) => setOverrideVal(e.target.value)}
-                className="input override-input"
-                style={{ width: 80 }}
-              />
-              <input
-                type="text"
-                placeholder="Reason (optional)"
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-                className="input override-reason"
-                style={{ flex: 1 }}
-              />
-              <button className="btn-sm btn-gold" onClick={handleOverride}>Apply</button>
+          {breakdown?.override ? (
+            <div className="text-sm text-muted">Override: +{breakdown.override} pts {breakdown.override_note ? `(${breakdown.override_note})` : ''}</div>
+          ) : null}
+          {isHost && (
+            <div className="override-section mt-2">
+              <h4 className="text-sm text-muted mb-1">Host Override</h4>
+              <div className="flex gap-1">
+                <input type="number" placeholder="Points" value={overrideVal}
+                  onChange={e => setOverrideVal(e.target.value)} style={{ width: '80px' }} />
+                <input type="text" placeholder="Note" value={overrideNote}
+                  onChange={e => setOverrideNote(e.target.value)} style={{ flex: 1 }} />
+                <button className="btn btn-secondary" onClick={handleOverride}>Apply</button>
+              </div>
             </div>
           )}
         </div>

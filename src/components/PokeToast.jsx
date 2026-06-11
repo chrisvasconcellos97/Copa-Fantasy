@@ -1,15 +1,16 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
-export default function PokeToast({ message, visible, onDismiss }) {
+export default function PokeToast({ message, onDismiss }) {
   useEffect(() => {
-    if (!visible) return;
-    const t = setTimeout(onDismiss, 6000);
-    return () => clearTimeout(t);
-  }, [visible, onDismiss]);
+    const timer = setTimeout(onDismiss, 6000);
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
 
   return (
-    <div className={`poke-toast${visible ? ' visible' : ''}`} onClick={onDismiss}>
-      👋 {message || "It's your turn to pick!"}
+    <div className="poke-toast" onClick={onDismiss}>
+      <span className="text-xl">👆</span>
+      <span className="font-bold">{message || 'You have been poked!'}</span>
+      <span className="text-muted text-sm" style={{ marginLeft: '8px' }}>Click to dismiss</span>
     </div>
   );
 }

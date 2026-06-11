@@ -1,30 +1,30 @@
-import React from 'react';
-
 export default function ConfirmBar({ selectedTeam, onConfirm, onCancel }) {
   const visible = !!selectedTeam;
+  const fallback = selectedTeam
+    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedTeam.name || 'T')}&background=2a2a3a&color=e8e8f0&size=36`
+    : '';
 
   return (
-    <div className={`confirm-bar${visible ? ' visible' : ''}`}>
-      {selectedTeam && (
-        <>
-          {selectedTeam.logo_url ? (
+    <div className={`confirm-bar ${visible ? 'visible' : ''}`}>
+      <div className="confirm-bar-info">
+        {selectedTeam && (
+          <>
             <img
-              src={selectedTeam.logo_url}
+              src={selectedTeam.logo_url || fallback}
               alt={selectedTeam.name}
-              style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }}
+              className="confirm-bar-logo"
+              onError={(e) => { e.target.src = fallback; }}
             />
-          ) : (
-            <span style={{ fontSize: '1.6rem', flexShrink: 0 }}>⚽</span>
-          )}
-          <span style={{ flex: 1, fontWeight: 700, fontSize: '1rem' }}>{selectedTeam.name}</span>
-          <button className="btn btn-outline btn-sm" onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="btn btn-gold btn-sm" onClick={onConfirm}>
-            Confirm Pick
-          </button>
-        </>
-      )}
+            <span className="confirm-bar-name">{selectedTeam.name}</span>
+          </>
+        )}
+      </div>
+      <button className="btn btn-outline btn-sm" onClick={onCancel}>
+        Cancel
+      </button>
+      <button className="btn btn-gold btn-sm" onClick={onConfirm} disabled={!selectedTeam}>
+        Confirm Pick
+      </button>
     </div>
   );
 }

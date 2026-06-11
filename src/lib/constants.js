@@ -1,75 +1,124 @@
+// ============================================================
+// Copa Fantasy 2026 – Constants
+// ============================================================
+
 export const SCORING = {
-  // Team results
-  GROUP_WIN: 3,
-  GROUP_DRAW: 1,
-  GROUP_LOSS: 0,
-  R32_WIN: 5,
-  R16_WIN: 8,
-  QF_WIN: 8,
-  SF_WIN: 13,
-  FINAL_WIN: 21,
-  CHAMPION: 34,
+  // Team / match results
+  group_win: 3,
+  group_draw: 1,
+  group_loss: 0,
+  r32_win: 5,
+  qf_win: 8,
+  sf_win: 13,
+  final_win: 21,
+  champion: 34,
   // Player events
-  GOAL: 6,
-  ASSIST: 4,
-  CLEAN_SHEET_GK: 10,
-  CLEAN_SHEET_DEF: 6,
-  YELLOW_CARD: -1,
-  RED_CARD: -3,
-  MOTM: 5,
-  TOP_SCORER: 15,
-  GOLDEN_BOOT: 20,
+  goal: 6,
+  assist: 4,
+  clean_sheet_gk: 10,
+  clean_sheet_def: 6,
+  yellow_card: -1,
+  red_card: -3,
+  motm: 5,
+  top_scorer: 15,
+  golden_boot: 20,
 };
 
 export const RESULT_TYPES = [
-  { value: 'group_win', label: 'Group Stage Win', points: 3 },
-  { value: 'group_draw', label: 'Group Stage Draw', points: 1 },
-  { value: 'group_loss', label: 'Group Stage Loss', points: 0 },
-  { value: 'r32_win', label: 'Round of 32 Win', points: 5 },
-  { value: 'r16_win', label: 'Round of 16 Win', points: 8 },
-  { value: 'qf_win', label: 'Quarter-Final Win', points: 8 },
-  { value: 'sf_win', label: 'Semi-Final Win', points: 13 },
-  { value: 'final_win', label: 'Final Win', points: 21 },
-  { value: 'champion', label: 'Champions!', points: 34 },
+  { value: 'group_win', label: 'Group Stage Win (+3)' },
+  { value: 'group_draw', label: 'Group Stage Draw (+1)' },
+  { value: 'group_loss', label: 'Group Stage Loss (0)' },
+  { value: 'r32_win', label: 'Round of 32 Win (+5)' },
+  { value: 'qf_win', label: 'Quarter-Final Win (+8)' },
+  { value: 'sf_win', label: 'Semi-Final Win (+13)' },
+  { value: 'final_win', label: 'Final Win (+21)' },
+  { value: 'champion', label: 'Tournament Champion (+34)' },
 ];
 
 export const BONUS_TYPES = [
-  { value: 'goal', label: 'Goal', points: 6 },
-  { value: 'assist', label: 'Assist', points: 4 },
-  { value: 'clean_sheet_gk', label: 'Clean Sheet (GK)', points: 10 },
-  { value: 'clean_sheet_def', label: 'Clean Sheet (DEF)', points: 6 },
-  { value: 'yellow_card', label: 'Yellow Card', points: -1 },
-  { value: 'red_card', label: 'Red Card', points: -3 },
-  { value: 'motm', label: 'Man of the Match', points: 5 },
-  { value: 'top_scorer', label: 'Top Scorer Bonus', points: 15 },
-  { value: 'golden_boot', label: 'Golden Boot', points: 20 },
+  { value: 'goal', label: 'Goal (+6)' },
+  { value: 'assist', label: 'Assist (+4)' },
+  { value: 'clean_sheet_gk', label: 'Clean Sheet (GK) (+10)' },
+  { value: 'clean_sheet_def', label: 'Clean Sheet (DEF) (+6)' },
+  { value: 'yellow_card', label: 'Yellow Card (-1)' },
+  { value: 'red_card', label: 'Red Card (-3)' },
+  { value: 'motm', label: 'Man of the Match (+5)' },
+  { value: 'top_scorer', label: 'Top Scorer Bonus (+15)' },
+  { value: 'golden_boot', label: 'Golden Boot (+20)' },
 ];
 
+// Pot assignments for the 2026 Copa America / World Cup.
+// Keys are pot numbers (1-4), values are arrays of team names.
 export const FALLBACK_POTS = {
   1: [
-    'Mexico', 'Canada', 'USA', 'Argentina', 'Brazil', 'France',
-    'England', 'Germany', 'Portugal', 'Netherlands', 'Spain', 'Belgium',
+    'Mexico',
+    'Canada',
+    'USA',
+    'Argentina',
+    'Brazil',
+    'France',
+    'England',
+    'Germany',
+    'Portugal',
+    'Netherlands',
+    'Spain',
+    'Belgium',
   ],
   2: [
-    'Croatia', 'Morocco', 'Colombia', 'Uruguay', 'Switzerland', 'Japan',
-    'Senegal', 'Iran', 'South Korea', 'Ecuador', 'Austria', 'Australia',
+    'Croatia',
+    'Morocco',
+    'Colombia',
+    'Uruguay',
+    'Switzerland',
+    'Japan',
+    'Senegal',
+    'Iran',
+    'South Korea',
+    'Ecuador',
+    'Austria',
+    'Australia',
   ],
   3: [
-    'Norway', 'Panama', 'Egypt', 'Algeria', 'Scotland', 'Paraguay',
-    'Tunisia', 'Ivory Coast', 'Uzbekistan', 'Qatar', 'Saudi Arabia', 'South Africa',
+    'Norway',
+    'Panama',
+    'Egypt',
+    'Algeria',
+    'Scotland',
+    'Paraguay',
+    'Tunisia',
+    'Ivory Coast',
+    'Uzbekistan',
+    'Qatar',
+    'Saudi Arabia',
+    'South Africa',
   ],
   4: [
-    'Jordan', 'Cape Verde', 'Ghana', 'Curaçao', 'Haiti', 'New Zealand',
-    'Bosnia & Herzegovina', 'Sweden', 'Türkiye', 'Czechia', 'DR Congo', 'Iraq',
+    'Jordan',
+    'Cape Verde',
+    'Ghana',
+    'Curaçao',
+    'Haiti',
+    'New Zealand',
+    'Bosnia & Herzegovina',
+    'Sweden',
+    'Türkiye',
+    'Czechia',
+    'DR Congo',
+    'Iraq',
   ],
 };
 
+/**
+ * Normalise a position string to a short canonical form.
+ * @param {string} pos
+ * @returns {string}
+ */
 export function normalizePosition(pos) {
-  if (!pos) return 'MID';
-  const p = pos.toUpperCase();
+  if (!pos) return 'UNK';
+  const p = pos.trim().toUpperCase();
   if (p === 'G' || p === 'GK' || p === 'GOALKEEPER') return 'GK';
   if (p === 'D' || p === 'DEF' || p === 'DEFENDER') return 'DEF';
   if (p === 'M' || p === 'MID' || p === 'MIDFIELDER') return 'MID';
   if (p === 'F' || p === 'FWD' || p === 'FORWARD' || p === 'ATTACKER') return 'FWD';
-  return pos.slice(0, 3).toUpperCase();
+  return p.slice(0, 3);
 }

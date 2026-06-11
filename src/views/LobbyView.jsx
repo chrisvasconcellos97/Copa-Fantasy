@@ -1,107 +1,131 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { getOrCreateToken } from '../lib/session'
-import { useGame } from '../hooks/useGame'
-import { usePlayers } from '../hooks/usePlayers'
-import CopyCode from '../components/CopyCode'
+import React, { useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { getSession } from '../lib/session';
+import { useGame } from '../hooks/useGame';
+import { usePlayers } from '../hooks/usePlayers';
+import CopyCode from '../components/CopyCode';
 
 export default function LobbyView() {
-  const { gameId } = useParams()
-  const navigate = useNavigate()
-  const token = getOrCreateToken()
-  const { game, loading: gameLoading } = useGame(gameId)
-  const { players, loading: playersLoading } = usePlayers(gameId)
-  const [starting, setStarting] = useState(false)
-  const [error, setError] = useState('')
-
-  const me = players.find(p => p.session_token === token)
-  const isHost = game && game.host_session_token === token
+  const { gameId } = useParams();
+  const navigate = useNavigate();
+  const { game, loading } = useGame(gameId);
+  const { players } = usePlayers(gameId);
+  const session = getSession();
+  const isHost = Boolean(session?.hostToken);
 
   useEffect(() => {
-    if (game && (game.status === 'drafting_teams' || game.status === 'selecting_players' || game.status === 'selecting_captain')) {
-      navigate('/draft/' + gameId)
+    if (!game) return;
+    if (game.status !== 'lobby') {
+      navigate(`/draft/${gameId}`, { replace: true });
     }
-    if (game && (game.status === 'tournament' || game.status === 'complete')) {
-      navigate('/leaderboard/' + gameId)
-    }
-  }, [game, gameId, navigate])
+  }, [game, gameId, navigate]);
 
-  async function startDraft() {
-    if (players.length < 2) { setError('Need at least 2 players to start'); return }
-    setStarting(true)
-    setError('')
-    try {
-      const totalPicks = players.length * 8
-      const { error: e } = await supabase
-        .from('games')
-        .update({ status: 'drafting_teams', total_picks: totalPicks, current_pick_number: 1 })
-        .eq('id', gameId)
-      if (e) throw e
-    } catch (e) {
-      setError(e.message || 'Failed to start draft')
-    }
-    setStarting(false)
+  async function handleStartDraft() {
+    const { error } = await supabase
+      .from('games')
+      .update({ status: 'drafting_teams' })
+      .eq('id', gameId);
+    if (error) alert(error.message);
   }
 
-  if (gameLoading || playersLoading) {
-    return <div className="loading-screen"><div className="spinner" /><span>Loading lobby...</span></div>
+  if (loading) {
+    return (
+      <div className="loading-center">
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (!game) {
+    return (
+      <div className="page text-center">
+        <p className="text-muted">Game not found.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="view">
-      <div className="view-header">
-        <div>
-          <div className="view-title">Game Lobby</div>
-          <div className="view-subtitle">{players.length} player{players.length !== 1 ? 's' : ''} joined</div>
-        </div>
-        <span className="status-pill lobby"><span className="status-dot" />Lobby</span>
+    <div className="page container">
+      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <div style={{ fontSize: '2rem', marginBottom: 8 }}>🏟️</div>
+        <h1 style={{ color: 'var(--gold)', marginBottom: 4 }}>Game Lobby</h1>
+        <p style={{ color: 'var(--text-muted)' }}>Share the code below with friends to join</p>
       </div>
 
-      {game && <CopyCode code={game.code} />}
-
-      {error && <div className="error-msg">{error}</div>}
-
-      <div className="card">
-        <div className="card-title">Players</div>
-        <div className="players-list">
-          {players.map(p => (
-            <div key={p.id} className="player-row">
-              <span className="player-row-name">{p.name}</span>
-              {p.session_token === token && <span className="player-row-you">You</span>}
-              {game && p.session_token === game.host_session_token && <span className="player-row-host">Host</span>}
-            </div>
-          ))}
-          {players.length === 0 && (
-            <div className="empty-state"><div>Waiting for players...</div></div>
-          )}
-        </div>
+      <div className="card" style={{ textAlign: 'center', marginBottom: 24 }}>
+        <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: '0.9rem' }}>Join Code</p>
+        <CopyCode code={game.join_code} />
       </div>
 
-      {isHost && (
-        <div className="card">
-          <div className="card-title">Host Controls</div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
-            Start the draft when everyone has joined. You need at least 2 players.
-          </p>
-          <button className="btn-primary" onClick={startDraft} disabled={starting || players.length < 2}>
-            {starting ? 'Starting...' : 'Start Draft'}
-          </button>
-        </div>
-      )}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h3 style={{ marginBottom: 16 }}>
+          Players ({players.length})
+        </h3>
+        {players.length === 0 ? (
+          <p className="text-muted text-sm">No players yet...</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {players.map((player) => (
+              <div
+                key={player.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <span style={{ fontSize: '1.2rem' }}>
+                  {player.is_host ? '👑' : '👤'}
+                </span>
+                <span style={{ fontWeight: 600 }}>{player.player_name}</span>
+                {player.is_host && (
+                  <span className="badge badge-gold" style={{ marginLeft: 'auto' }}>Host</span>
+                )}
+                {player.id === session?.playerId && !player.is_host && (
+                  <span className="badge badge-muted" style={{ marginLeft: 'auto' }}>You</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {!isHost && (
-        <div className="waiting-banner">Waiting for the host to start the draft...</div>
-      )}
-
-      <div className="card">
-        <div className="card-title">Draft Format</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--muted)' }}>
-          <div>Snake draft across 4 pots, 2 picks per pot</div>
-          <div>8 teams total per player</div>
-          <div>{players.length} players x 8 teams = {players.length * 8} total picks</div>
-        </div>
+      <div style={{ textAlign: 'center' }}>
+        {isHost ? (
+          <div>
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={handleStartDraft}
+              disabled={players.length < 2}
+            >
+              🚀 Start Draft
+            </button>
+            {players.length < 2 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 8 }}>
+                Need at least 2 players to start
+              </p>
+            )}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              justifyContent: 'center',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+            <span>Waiting for host to start the draft...</span>
+          </div>
+        )}
       </div>
     </div>
-  )
+  );
 }

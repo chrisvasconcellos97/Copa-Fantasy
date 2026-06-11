@@ -1,22 +1,20 @@
-import React from 'react';
-
-export default function SnakeOrderBar({ players, currentPickerIndex, myPlayerId }) {
-  if (!players || !players.length) return null;
-
+export default function SnakeOrderBar({ players = [], currentPickerIndex, myPlayerId }) {
   return (
     <div className="snake-bar">
-      {players.map((player, idx) => {
-        const isActive = idx === currentPickerIndex;
+      <span className="text-xs text-muted" style={{ flexShrink: 0 }}>Draft Order:</span>
+      {players.map((player, i) => {
+        const isCurrent = i === currentPickerIndex;
         const isMine = player.id === myPlayerId;
-        const classes = ['snake-chip', isActive ? 'active' : isMine ? 'mine' : '']
-          .filter(Boolean)
-          .join(' ');
+        const classes = [
+          'snake-chip',
+          isCurrent ? 'current' : '',
+          !isCurrent && isMine ? 'mine' : '',
+        ].filter(Boolean).join(' ');
         return (
-          <span key={player.id} className={classes}>
+          <div key={player.id} className={classes}>
             {player.player_name}
-            {player.is_host ? ' ★' : ''}
-            {isActive ? ' ⏳' : ''}
-          </span>
+            {isMine && !isCurrent && ' (you)'}
+          </div>
         );
       })}
     </div>

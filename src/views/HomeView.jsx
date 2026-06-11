@@ -1,92 +1,200 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
-import { getOrCreateToken, setPlayerName, setGameId, getPlayerName } from '../lib/session';
+import { getSession, setSession } from '../lib/session';
 
-function generateCode() {
-  return Math.random().toString(36).substring(2,8).toUpperCase();
+function generateJoinCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
 }
 
 export default function HomeView() {
-  const nav = useNavigate();
-  const [createName, setCreateName] = useState(getPlayerName());
-  const [joinName, setJoinName] = useState(getPlayerName());
+  const navigate = useNavigate();
+  const [tab, setTab] = useState('create');
+
+  // Create state
+  const [createName, setCreateName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  // Join state
   const [joinCode, setJoinCode] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [joinName, setJoinName] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState('');
 
-  async function handleCreate() {
-    if (!createName.trim()) return setError('Enter your name');
-    setLoading(true); setError('');
-    const token = getOrCreateToken();
-    setPlayerName(createName.trim());
-    const code = generateCode();
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!createName.trim()) return;
+    setCreating(true);
+    setCreateError('');
 
-    const { data: game, error: ge } = await supabase.from('games').insert({
-      code, host_session_token: token, status: 'lobby', current_pick_number: 1, wc_season: 2026
-    }).select().single();
-    if (ge) { setError(ge.message); setLoading(false); return; }
+    try {
+      const hostToken = uuidv4();
+      const joinCode = generateJoinCode();
 
-    await supabase.from('game_players').insert({
-      game_id: game.id, name: createName.trim(), session_token: token, draft_order: 0
-    });
+      const { data: game, error: gameErr } = await supabase
+        .from('games')
+        .insert({ status: 'lobby', host_token: hostToken, join_code: joinCode })
+        .select()
+        .single();
 
-    setGameId(game.id);
-    nav(`/lobby/${game.id}`);
+      if (gameErr) throw gameErr;
+
+      const { data: gamePlayer, error: playerErr } = await supabase
+        .from('game_players')
+        .insert({ game_id: game.id, player_name: createName.trim(), is_host: true })
+        .select()
+        .single();
+
+      if (playerErr) throw playerErr;
+
+      setSession({
+        playerId: gamePlayer.id,
+        playerName: createName.trim(),
+        hostToken,
+      });
+
+      navigate(`/lobby/${game.id}`);
+    } catch (err) {
+      setCreateError(err.message || 'Failed to create game');
+    } finally {
+      setCreating(false);
+    }
   }
 
-  async function handleJoin() {
-    if (!joinName.trim()) return setError('Enter your name');
-    if (!joinCode.trim()) return setError('Enter game code');
-    setLoading(true); setError('');
-    const token = getOrCreateToken();
-    setPlayerName(joinName.trim());
+  async function handleJoin(e) {
+    e.preventDefault();
+    if (!joinCode.trim() || !joinName.trim()) return;
+    setJoining(true);
+    setJoinError('');
 
-    const { data: game, error: ge } = await supabase.from('games').select('*').eq('code', joinCode.trim().toUpperCase()).single();
-    if (ge || !game) { setError('Game not found'); setLoading(false); return; }
-    if (game.status !== 'lobby') { setError('Game already started'); setLoading(false); return; }
+    try {
+      const { data: game, error: gameErr } = await supabase
+        .from('games')
+        .select('*')
+        .eq('join_code', joinCode.trim().toUpperCase())
+        .single();
 
-    const { data: existing } = await supabase.from('game_players').select('id').eq('game_id', game.id).eq('session_token', token).single();
-    if (!existing) {
-      const { data: allPlayers } = await supabase.from('game_players').select('draft_order').eq('game_id', game.id).order('draft_order', { ascending: false }).limit(1);
-      const nextOrder = allPlayers?.length ? (allPlayers[0].draft_order + 1) : 1;
-      await supabase.from('game_players').insert({ game_id: game.id, name: joinName.trim(), session_token: token, draft_order: nextOrder });
+      if (gameErr || !game) throw new Error('Game not found. Check the code and try again.');
+
+      if (game.status !== 'lobby') {
+        throw new Error('This game has already started.');
+      }
+
+      const { data: gamePlayer, error: playerErr } = await supabase
+        .from('game_players')
+        .insert({ game_id: game.id, player_name: joinName.trim(), is_host: false })
+        .select()
+        .single();
+
+      if (playerErr) throw playerErr;
+
+      setSession({
+        playerId: gamePlayer.id,
+        playerName: joinName.trim(),
+        hostToken: null,
+      });
+
+      navigate(`/lobby/${game.id}`);
+    } catch (err) {
+      setJoinError(err.message || 'Failed to join game');
+    } finally {
+      setJoining(false);
     }
-
-    setGameId(game.id);
-    nav(`/lobby/${game.id}`);
   }
 
   return (
-    <div className="view">
-      <div style={{ textAlign:'center', padding:'2rem 0 1.5rem' }}>
-        <div style={{ fontSize:'3rem', marginBottom:'0.5rem' }}>🏆</div>
-        <h1>Copa Fantasy <span className="text-gold">2026</span></h1>
-        <p className="text-muted mt-1">Draft teams. Pick players. Win the World Cup.</p>
+    <div className="page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+      <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <div style={{ fontSize: '3rem', marginBottom: 12 }}>🏆</div>
+        <h1 style={{ color: 'var(--gold)', marginBottom: 8 }}>Copa Fantasy 2026</h1>
+        <p style={{ color: 'var(--text-muted)' }}>Draft your teams, compete with friends</p>
       </div>
 
-      {error && <div className="card" style={{ borderColor:'var(--danger)', marginBottom:'0.75rem' }}><p className="text-danger">{error}</p></div>}
+      <div style={{ width: '100%', maxWidth: 440 }}>
+        <div className="tabs" style={{ marginBottom: 24 }}>
+          <button className={`tab ${tab === 'create' ? 'active' : ''}`} onClick={() => setTab('create')}>
+            Create Game
+          </button>
+          <button className={`tab ${tab === 'join' ? 'active' : ''}`} onClick={() => setTab('join')}>
+            Join Game
+          </button>
+        </div>
 
-      <div className="card mb-2">
-        <h2 className="mb-2">Create Game</h2>
-        <div className="field">
-          <label className="label">Your Name</label>
-          <input className="input" placeholder="Enter your name" value={createName} onChange={e => setCreateName(e.target.value)} />
-        </div>
-        <button className="btn btn-primary btn-block" onClick={handleCreate} disabled={loading}>Create New Game</button>
-      </div>
+        {tab === 'create' && (
+          <div className="card">
+            <h2 style={{ marginBottom: 20 }}>Create a New Game</h2>
+            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="input-group">
+                <label>Your Name</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter your name"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  maxLength={30}
+                  required
+                />
+              </div>
+              {createError && (
+                <div style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>{createError}</div>
+              )}
+              <button className="btn btn-primary btn-full" type="submit" disabled={creating || !createName.trim()}>
+                {creating ? 'Creating...' : 'Create Game'}
+              </button>
+            </form>
+          </div>
+        )}
 
-      <div className="card">
-        <h2 className="mb-2">Join Game</h2>
-        <div className="field">
-          <label className="label">Your Name</label>
-          <input className="input" placeholder="Enter your name" value={joinName} onChange={e => setJoinName(e.target.value)} />
-        </div>
-        <div className="field">
-          <label className="label">Game Code</label>
-          <input className="input" placeholder="Enter 6-letter code" value={joinCode} onChange={e => setJoinCode(e.target.value)} maxLength={8} style={{ textTransform:'uppercase', letterSpacing:'0.1em' }} />
-        </div>
-        <button className="btn btn-secondary btn-block" onClick={handleJoin} disabled={loading}>Join Game</button>
+        {tab === 'join' && (
+          <div className="card">
+            <h2 style={{ marginBottom: 20 }}>Join a Game</h2>
+            <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="input-group">
+                <label>Game Code</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter 6-character code"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  maxLength={6}
+                  style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700 }}
+                  required
+                />
+              </div>
+              <div className="input-group">
+                <label>Your Name</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter your name"
+                  value={joinName}
+                  onChange={(e) => setJoinName(e.target.value)}
+                  maxLength={30}
+                  required
+                />
+              </div>
+              {joinError && (
+                <div style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>{joinError}</div>
+              )}
+              <button
+                className="btn btn-primary btn-full"
+                type="submit"
+                disabled={joining || !joinCode.trim() || !joinName.trim()}
+              >
+                {joining ? 'Joining...' : 'Join Game'}
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useScores(gameId) {
@@ -8,44 +8,41 @@ export function useScores(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let isMounted = true;
+    let channel;
 
-    async function fetchScores() {
+    async function loadScores() {
       setLoading(true);
       const { data, error } = await supabase
         .from('user_scores')
-        .select('*, game_players(player_name, is_host)')
+        .select('*')
         .eq('game_id', gameId)
         .order('total_points', { ascending: false });
-      if (isMounted) {
-        if (!error) setScores(data || []);
-        setLoading(false);
-      }
+      if (!error && data) setScores(data);
+      setLoading(false);
     }
 
-    fetchScores();
+    loadScores();
 
-    const channel = supabase
-      .channel(`user_scores:${gameId}`)
+    channel = supabase
+      .channel(`scores-${gameId}`)
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'user_scores', filter: `game_id=eq.${gameId}` },
         () => {
-          if (isMounted) fetchScores();
+          loadScores();
         }
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'user_scores', filter: `game_id=eq.${gameId}` },
         () => {
-          if (isMounted) fetchScores();
+          loadScores();
         }
       )
       .subscribe();
 
     return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [gameId]);
 

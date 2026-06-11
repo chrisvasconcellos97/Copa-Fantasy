@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export default function CopyCode({ code }) {
   const [copied, setCopied] = useState(false);
 
-  function copy() {
-    navigator.clipboard.writeText(code).then(() => {
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {
-      // fallback for non-secure contexts
+    } catch {
       const el = document.createElement('textarea');
       el.value = code;
       document.body.appendChild(el);
@@ -17,14 +17,19 @@ export default function CopyCode({ code }) {
       document.body.removeChild(el);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
-  }
+    }
+  };
 
   return (
-    <div className="copy-code" onClick={copy}>
-      <div className="code-label">Game Code</div>
-      <div className="code-display">{code}</div>
-      <div className="code-hint">{copied ? '✓ Copied!' : 'Tap to copy'}</div>
+    <div className="copy-code-wrap" onClick={handleCopy} role="button" tabIndex={0}
+      onKeyDown={e => e.key === 'Enter' && handleCopy()}>
+      <div className="copy-code-label text-muted text-sm mb-1">Join Code</div>
+      <div className="copy-code-value text-gold font-bold" style={{ fontSize: '2.5rem', letterSpacing: '0.15em' }}>
+        {code}
+      </div>
+      <div className={`copy-code-hint text-sm ${copied ? 'text-gold' : 'text-muted'}`}>
+        {copied ? '✓ Copied!' : 'Click to copy'}
+      </div>
     </div>
   );
 }

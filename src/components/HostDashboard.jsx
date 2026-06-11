@@ -1,37 +1,51 @@
-import React from 'react';
+export default function HostDashboard({ players = [], picks = [], currentPickerIndex, onPoke, teams = [] }) {
+  function getTeamCount(playerId) {
+    return picks.filter((p) => p.game_player_id === playerId).length;
+  }
 
-export default function HostDashboard({ players, picks, currentPickerIndex, onPoke, teams }) {
-  const teamMap = {};
-  if (teams) teams.forEach((t) => { teamMap[t.api_id] = t; });
+  function getTeamNames(playerId) {
+    const playerPicks = picks.filter((p) => p.game_player_id === playerId);
+    return playerPicks.map((pick) => {
+      const team = teams.find((t) => String(t.api_id) === String(pick.team_api_id));
+      return team ? team.name : `Team ${pick.team_api_id}`;
+    });
+  }
 
   return (
     <div className="host-dashboard">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>
-          Host Controls
-        </span>
-        <span className="badge badge-gold" style={{ fontSize: '0.65rem' }}>HOST</span>
+      <div className="section-title" style={{ fontSize: '0.9rem' }}>
+        🎯 Host Dashboard
       </div>
-      {players.map((player, idx) => {
-        const playerPicks = picks.filter((pk) => pk.game_player_id === player.id);
-        const isCurrentPicker = idx === currentPickerIndex;
+      {players.map((player, i) => {
+        const isCurrent = i === currentPickerIndex;
+        const count = getTeamCount(player.id);
+        const teamNames = getTeamNames(player.id);
         return (
           <div key={player.id} className="host-player-row">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-              {isCurrentPicker && <span style={{ color: 'var(--gold)', fontSize: '0.9rem' }}>⏳</span>}
-              <span style={{ fontWeight: isCurrentPicker ? 700 : 400, color: isCurrentPicker ? 'var(--gold)' : 'var(--text)', fontSize: '0.88rem' }}>
-                {player.player_name}
-              </span>
-              {player.is_host && <span className="badge badge-gold" style={{ fontSize: '0.6rem' }}>HOST</span>}
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: isCurrent ? 'var(--gold)' : 'var(--text)' }}
+                >
+                  {player.player_name}
+                  {isCurrent && ' ← picking'}
+                </span>
+                <span className="badge badge-muted">{count}/8</span>
+              </div>
+              {teamNames.length > 0 && (
+                <div className="text-xs text-muted mt-1" style={{ maxWidth: 220 }}>
+                  {teamNames.join(', ')}
+                </div>
+              )}
             </div>
-            <span className="text-muted text-sm">{playerPicks.length}/8 teams</span>
-            {isCurrentPicker && onPoke && (
+            {isCurrent && onPoke && (
               <button
-                className="btn btn-outline btn-sm"
-                onClick={() => onPoke(player)}
-                style={{ fontSize: '0.75rem' }}
+                className="btn btn-gold btn-sm"
+                onClick={() => onPoke(player.id)}
+                title={`Poke ${player.player_name}`}
               >
-                👋 Poke
+                👉 Poke
               </button>
             )}
           </div>

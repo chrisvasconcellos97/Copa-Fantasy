@@ -1,30 +1,46 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useNotifications(myPlayerId) {
-  const [unread, setUnread] = useState(0);
+  const [unread, setUnread] = useState([]);
   const [showPoke, setShowPoke] = useState(false);
   const [pokeMessage, setPokeMessage] = useState('');
-  const dismissTimer = useRef(null);
+
+  const dismissPoke = useCallback(() => {
+    setShowPoke(false);
+  }, []);
 
   useEffect(() => {
     if (!myPlayerId) return;
 
-    let isMounted = true;
+    let channel;
 
-    async function fetchUnread() {
-      const { count } = await supabase
+    async function loadUnread() {
+      const { data } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
+        .select('*')
         .eq('game_player_id', myPlayerId)
-        .eq('read', false);
-      if (isMounted) setUnread(count || 0);
+        .eq('read', false)
+        .order('created_at', { ascending: false });
+      if (data && data.length > 0) {
+        setUnread(data);
+        const latest = data[0];
+        if (latest.type === 'poke') {
+          setPokeMessage(latest.message || "It's your turn to pick!");
+          setShowPoke(true);
+          // Mark as read
+          await supabase
+            .from('notifications')
+            .update({ read: true })
+            .eq('id', latest.id);
+        }
+      }
     }
 
-    fetchUnread();
+    loadUnread();
 
-    const channel = supabase
-      .channel(`notifications:${myPlayerId}`)
+    channel = supabase
+      .channel(`notifications-${myPlayerId}`)
       .on(
         'postgres_changes',
         {
@@ -34,43 +50,24 @@ export function useNotifications(myPlayerId) {
           filter: `game_player_id=eq.${myPlayerId}`,
         },
         async (payload) => {
-          if (!isMounted) return;
           const notif = payload.new;
-          setUnread((prev) => prev + 1);
+          setUnread((prev) => [notif, ...prev]);
           if (notif.type === 'poke') {
             setPokeMessage(notif.message || "It's your turn to pick!");
             setShowPoke(true);
-            if (dismissTimer.current) clearTimeout(dismissTimer.current);
-            dismissTimer.current = setTimeout(() => {
-              if (isMounted) {
-                setShowPoke(false);
-                markRead(notif.id);
-              }
-            }, 6000);
+            await supabase
+              .from('notifications')
+              .update({ read: true })
+              .eq('id', notif.id);
           }
         }
       )
       .subscribe();
 
     return () => {
-      isMounted = false;
-      if (dismissTimer.current) clearTimeout(dismissTimer.current);
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [myPlayerId]);
-
-  async function markRead(notifId) {
-    await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', notifId);
-    setUnread((prev) => Math.max(0, prev - 1));
-  }
-
-  function dismissPoke() {
-    setShowPoke(false);
-    if (dismissTimer.current) clearTimeout(dismissTimer.current);
-  }
 
   return { unread, showPoke, dismissPoke, pokeMessage };
 }
