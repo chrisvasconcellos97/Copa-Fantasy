@@ -1,46 +1,52 @@
-import React from 'react'
+import React from 'react';
 
-const EVENT_ICONS = {
-  Goal: '⚽',
-  Card: '🟨',
-  subst: '🔄',
-  Var: '📺',
-  default: '•',
-}
-
-function getIcon(type, detail) {
-  if (type === 'Goal') return detail === 'Own Goal' ? '😬' : '⚽'
-  if (type === 'Card') return detail === 'Red Card' ? '🟥' : '🟨'
-  return EVENT_ICONS[type] || EVENT_ICONS.default
+function eventIcon(type, detail) {
+  const t = type?.toLowerCase() || '';
+  const d = detail?.toLowerCase() || '';
+  if (t === 'goal' || t === 'goal scored') return '⚽';
+  if (t === 'card' && d.includes('yellow')) return '🟨';
+  if (t === 'card' && d.includes('red')) return '🟥';
+  if (t === 'subst' || t === 'substitution') return '🔁';
+  if (t === 'assist') return '🅰️';
+  return '•';
 }
 
 export default function EventTicker({ events = [], myPlayerApiIds = [], myTeamApiIds = [] }) {
-  if (!events.length) {
-    return <div className="empty-state"><div className="text-sm">No events yet</div></div>
+  if (!events || events.length === 0) {
+    return (
+      <div className="empty-state" style={{ padding: '20px' }}>
+        <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>No events yet</span>
+      </div>
+    );
   }
 
   return (
-    <div className="event-ticker">
-      {events.map((ev, idx) => {
-        const isMine = myPlayerApiIds.includes(ev.player_api_id) || myPlayerApiIds.includes(ev.assist_api_id)
-        const isMyTeam = myTeamApiIds.includes(ev.team_api_id)
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
+      {events.map(ev => {
+        const isMyPlayer = ev.player_api_id && myPlayerApiIds.includes(ev.player_api_id);
+        const isMyTeam = ev.team_api_id && myTeamApiIds.includes(ev.team_api_id);
+        const highlight = isMyPlayer || isMyTeam;
         return (
-          <div key={ev.id || idx} className={`event-item${isMine ? ' mine' : ''}`}>
-            <span className="event-min">{ev.elapsed}'</span>
-            <span>{getIcon(ev.type, ev.detail)}</span>
-            <span style={{ flex: 1, fontSize: '0.75rem' }}>
-              <strong>{ev.player_name || `#${ev.player_api_id}`}</strong>
-              {ev.assist_api_id && (
-                <span className="text-muted"> (assist: {ev.assist_name || `#${ev.assist_api_id}`})</span>
-              )}
-              <span className="text-muted"> · {ev.detail || ev.type}</span>
+          <div
+            key={ev.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '5px 8px',
+              borderRadius: 6,
+              background: highlight ? 'rgba(255,215,0,0.08)' : 'transparent',
+              border: highlight ? '1px solid rgba(255,215,0,0.2)' : '1px solid transparent',
+            }}
+          >
+            <span style={{ fontSize: 14 }}>{eventIcon(ev.type, ev.detail)}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 28 }}>{ev.minute}'</span>
+            <span style={{ fontSize: 12, fontWeight: highlight ? 700 : 400, color: highlight ? 'var(--gold)' : 'var(--text)', flex: 1 }}>
+              {ev.detail || ev.type}
             </span>
-            {isMyTeam && !isMine && (
-              <span className="badge badge-navy" style={{ fontSize: '0.5rem' }}>MY</span>
-            )}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

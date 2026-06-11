@@ -1,32 +1,39 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.js';
 
 export function useNotifications(myPlayerId) {
   const [unread, setUnread] = useState([]);
+  const [showPoke, setShowPoke] = useState(false);
+  const [pokeMessage, setPokeMessage] = useState('');
 
   useEffect(() => {
     if (!myPlayerId) return;
-    let sub;
+    supabase.from('notifications').select('*').eq('game_player_id', myPlayerId).eq('read', false)
+      .then(({ data }) => setUnread(data || []));
 
-    async function load() {
-      const { data } = await supabase.from('notifications').select('*')
-        .eq('game_player_id', myPlayerId).eq('read', false).order('created_at', { ascending: false });
-      setUnread(data || []);
-    }
-    load();
-
-    sub = supabase.channel('notifs-' + myPlayerId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'game_player_id=eq.' + myPlayerId },
-        (p) => setUnread(prev => [p.new, ...prev]))
+    const channel = supabase.channel(`notif-${myPlayerId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'notifications', filter: `game_player_id=eq.${myPlayerId}`
+      }, payload => {
+        setUnread(prev => [...prev, payload.new]);
+        setPokeMessage(payload.new.message || 'You have been poked!');
+        setShowPoke(true);
+      })
       .subscribe();
 
-    return () => { supabase.removeChannel(sub); };
+    return () => supabase.removeChannel(channel);
   }, [myPlayerId]);
 
-  async function markRead(notifId) {
-    await supabase.from('notifications').update({ read: true }).eq('id', notifId);
-    setUnread(prev => prev.filter(n => n.id !== notifId));
-  }
+  const dismissPoke = async () => {
+    setShowPoke(false);
+    if (unread.length > 0) {
+      await supabase.from('notifications')
+        .update({ read: true })
+        .eq('game_player_id', myPlayerId)
+        .eq('read', false);
+      setUnread([]);
+    }
+  };
 
-  return { unread, markRead };
+  return { unread, showPoke, dismissPoke, pokeMessage };
 }

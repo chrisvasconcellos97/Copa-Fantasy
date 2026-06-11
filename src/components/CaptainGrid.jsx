@@ -1,52 +1,74 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { normalizePosition } from '../lib/constants';
 
-export default function CaptainGrid({ playerPicks, captainPickId, onSelectCaptain, players, teams, draftPicks }) {
-  // playerPicks: array of player_picks rows
-  // players: map of player_api_id -> player
-  // teams: map of team_api_id -> team
-  // draftPicks: array of draft_picks (to find team for each player_pick)
+const POSITION_COLORS = {
+  GK: '#f59e0b',
+  DEF: '#22c55e',
+  MID: '#3b82f6',
+  FWD: '#ef4444',
+};
+
+export default function CaptainGrid({ playerPicks, captainPickId, onSelectCaptain }) {
+  const [hoverId, setHoverId] = useState(null);
 
   return (
-    <div className="captain-grid">
-      {(playerPicks || []).map((pp) => {
-        const player = players ? players[pp.player_api_id] : null;
-        const draftPick = draftPicks ? draftPicks.find((dp) => dp.id === pp.draft_pick_id) : null;
-        const team = teams && draftPick ? teams[draftPick.team_api_id] : null;
-        const isSelected = pp.id === captainPickId;
-
-        return (
-          <div
-            key={pp.id}
-            className={`captain-card ${isSelected ? 'captain-card--selected' : ''}`}
-            onClick={() => onSelectCaptain && onSelectCaptain(pp.id)}
-          >
-            {isSelected && <div className="captain-crown">👑</div>}
-            {player?.photo_url ? (
-              <img
-                className="captain-card__photo"
-                src={player.photo_url}
-                alt={player?.name || ''}
-                loading="lazy"
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-            ) : (
-              <div className="captain-card__photo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', background: 'var(--navy-2)' }}>
-                👤
-              </div>
-            )}
-            <div className="captain-card__name">{player?.name || '—'}</div>
-            <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-              <span className={`badge badge-${(pp.position || 'mid').toLowerCase()}`}>{pp.position}</span>
+    <div>
+      <div className="section-title" style={{ marginBottom: 12 }}>Select Your Captain</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10 }}>
+        {playerPicks.map(player => {
+          const isSelected = player.api_id === captainPickId;
+          const isHovered = player.api_id === hoverId;
+          const pos = normalizePosition(player?.position);
+          const posColor = POSITION_COLORS[pos] || '#8888aa';
+          return (
+            <div
+              key={player.api_id}
+              onClick={() => onSelectCaptain && onSelectCaptain(player)}
+              onMouseEnter={() => setHoverId(player.api_id)}
+              onMouseLeave={() => setHoverId(null)}
+              style={{
+                background: 'var(--card-bg)',
+                border: `2px solid ${isSelected ? 'var(--gold)' : isHovered ? 'var(--gold)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius)',
+                padding: '10px 8px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 5,
+                position: 'relative',
+                boxShadow: isSelected ? 'var(--shadow-gold)' : 'none',
+                transition: 'border-color 0.18s, box-shadow 0.18s',
+              }}
+            >
+              {(isSelected || isHovered) && (
+                <div style={{ position: 'absolute', top: 4, left: 4, fontSize: 14 }}>👑</div>
+              )}
+              {player.photo_url ? (
+                <img
+                  src={player.photo_url}
+                  alt={player.name}
+                  style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${isSelected ? 'var(--gold)' : 'var(--border)'}` }}
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
+              ) : (
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>👤</div>
+              )}
+              <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', lineHeight: 1.3 }}>{player.name}</span>
+              <span style={{ background: posColor + '22', color: posColor, borderRadius: 999, padding: '1px 7px', fontSize: 9, fontWeight: 700 }}>
+                {pos}
+              </span>
+              {isSelected && <span style={{ color: 'var(--gold)', fontSize: 10, fontWeight: 800 }}>CAPTAIN</span>}
             </div>
-            {team && (
-              <div className="captain-card__team">{team.name}</div>
-            )}
-            {isSelected && (
-              <span className="badge badge-gold" style={{ marginTop: '0.25rem' }}>Captain ×2</span>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      {playerPicks.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state-icon">👤</div>
+          <div>No players selected yet.</div>
+        </div>
+      )}
     </div>
   );
 }
