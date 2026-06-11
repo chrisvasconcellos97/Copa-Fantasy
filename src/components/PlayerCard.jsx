@@ -1,33 +1,60 @@
 import React from 'react';
+import { normalizePosition } from '../lib/constants';
 
-const POS_CLASS = { FWD: 'badge-fwd', MID: 'badge-mid', DEF: 'badge-def', GK: 'badge-muted' };
+const POSITION_COLORS = {
+  GK: '#f59e0b',
+  DEF: '#22c55e',
+  MID: '#3b82f6',
+  FWD: '#ef4444',
+};
 
-export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
-  const cls = [
-    'player-card',
-    selected ? 'player-card--selected' : '',
-  ].filter(Boolean).join(' ');
-
-  const pos = player.position || 'MID';
+export default function PlayerCard({ player, selected, onClick, showPosition }) {
+  const pos = normalizePosition(player?.position);
+  const posColor = POSITION_COLORS[pos] || '#8888aa';
 
   return (
-    <div className={cls} onClick={() => onClick && onClick(player)}>
-      {player.photo_url ? (
+    <div
+      onClick={() => onClick && onClick(player)}
+      style={{
+        background: 'var(--card-bg)',
+        border: `2px solid ${selected ? 'var(--gold)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius)',
+        padding: '12px 8px',
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 6,
+        boxShadow: selected ? 'var(--shadow-gold)' : 'none',
+        transition: 'border-color 0.18s, box-shadow 0.18s',
+        position: 'relative',
+      }}
+    >
+      {player?.photo_url ? (
         <img
-          className="player-card__photo"
           src={player.photo_url}
           alt={player.name}
-          loading="lazy"
-          onError={(e) => { e.target.src = ''; e.target.style.display = 'none'; }}
+          style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${selected ? 'var(--gold)' : 'var(--border)'}` }}
+          onError={e => { e.target.src = ''; e.target.style.background = 'var(--border)'; }}
         />
       ) : (
-        <div className="player-card__photo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, border: `2px solid ${selected ? 'var(--gold)' : 'var(--border)'}` }}>
           👤
         </div>
       )}
-      <span className="player-card__name truncate">{player.name}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, textAlign: 'center', lineHeight: 1.3, color: 'var(--text)' }}>
+        {player?.name}
+      </span>
       {showPosition && (
-        <span className={`badge ${POS_CLASS[pos] || 'badge-muted'}`}>{pos}</span>
+        <span style={{ background: posColor + '22', color: posColor, borderRadius: 999, padding: '1px 8px', fontSize: 10, fontWeight: 700 }}>
+          {pos}
+        </span>
+      )}
+      {player?.number && (
+        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>#{player.number}</span>
+      )}
+      {selected && (
+        <div style={{ position: 'absolute', top: 4, right: 4, color: 'var(--gold)', fontSize: 12 }}>✓</div>
       )}
     </div>
   );

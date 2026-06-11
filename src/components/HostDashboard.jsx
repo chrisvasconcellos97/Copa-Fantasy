@@ -1,41 +1,31 @@
-import React from 'react';
-
-export default function HostDashboard({ players, picks, currentPicker, onPoke, teams, totalPicks }) {
-  const progress = picks ? picks.length : 0;
-  const total = totalPicks || (players ? players.length * 8 : 0);
-  const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
-
+export default function HostDashboard({ players, picks, currentPicker, onPoke, teams }) {
+  const teamsById = Object.fromEntries((teams || []).map(t => [t.api_id, t]))
   return (
     <div className="host-dashboard">
-      <div className="host-dashboard__title">🎛 Host Dashboard</div>
-      <div style={{ marginBottom: '0.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '0.25rem' }}>
-          <span>Draft Progress</span>
-          <span>{progress}/{total} picks ({pct}%)</span>
-        </div>
-        <div className="draft-progress">
-          <div className="draft-progress__fill" style={{ width: `${pct}%` }} />
-        </div>
+      <h3>Draft Progress</h3>
+      <div className="host-players-list">
+        {(players || []).map(p => {
+          const myPicks = (picks || []).filter(pk => pk.player_id === p.id)
+          const isCurrent = currentPicker && currentPicker.id === p.id
+          return (
+            <div key={p.id} className={'host-player-row' + (isCurrent ? ' current' : '')}>
+              <div className="host-player-info">
+                <span className="host-player-name">{p.name}</span>
+                <span className="host-pick-count">{myPicks.length} picks</span>
+              </div>
+              <div className="host-player-picks">
+                {myPicks.map(pk => {
+                  const t = teamsById[pk.team_api_id]
+                  return t ? <span key={pk.id} className="host-pick-chip">{t.name}</span> : null
+                })}
+              </div>
+              {isCurrent && onPoke && (
+                <button className="btn-sm btn-gold" onClick={() => onPoke(p.id)}>Poke</button>
+              )}
+            </div>
+          )
+        })}
       </div>
-      {currentPicker && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-          <div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '0.15rem' }}>Currently Picking</div>
-            <div style={{ fontWeight: 700, color: 'var(--gold-soft)' }}>{currentPicker.name}</div>
-          </div>
-          {onPoke && (
-            <button
-              className="btn btn-outline btn-sm"
-              onClick={() => onPoke(currentPicker)}
-            >
-              👋 Poke
-            </button>
-          )}
-        </div>
-      )}
-      {!currentPicker && (
-        <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Draft complete or not started.</div>
-      )}
     </div>
-  );
+  )
 }
