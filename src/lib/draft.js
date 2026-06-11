@@ -1,46 +1,41 @@
 /**
- * Returns the full snake draft order as an array of player indices.
- * Round 1: 0,1,2,...,n-1
- * Round 2: n-1,...,1,0
- * Round 3: 0,1,2,...  etc.
+ * Returns snake draft order: array of player indices for each pick slot.
+ * E.g. 3 players, 2 rounds: [0,1,2, 2,1,0]
  */
 export function getSnakeOrder(players, totalRounds) {
-  const n = players.length;
   const order = [];
+  const n = players.length;
   for (let round = 0; round < totalRounds; round++) {
-    const indices = Array.from({ length: n }, (_, i) => i);
-    if (round % 2 === 1) indices.reverse();
-    order.push(...indices);
+    if (round % 2 === 0) {
+      for (let i = 0; i < n; i++) order.push(i);
+    } else {
+      for (let i = n - 1; i >= 0; i--) order.push(i);
+    }
   }
   return order;
 }
 
 /**
- * Returns the player object whose turn it currently is.
- * picks: current draft_picks array
- * players: game_players array (ordered by joined_at)
+ * Returns the index into players array of who should pick next.
  */
 export function getCurrentPicker(picks, players, totalRounds) {
-  if (!players || players.length === 0) return null;
+  const pickCount = picks ? picks.length : 0;
   const order = getSnakeOrder(players, totalRounds);
-  const pickIndex = picks.length;
-  if (pickIndex >= order.length) return null;
-  const playerIndex = order[pickIndex];
-  return players[playerIndex] || null;
+  if (pickCount >= order.length) return -1; // draft complete
+  return order[pickCount];
 }
 
 /**
- * Returns pot number (1-based) for the given pick number (0-based).
- * potSize: how many teams per pot (default 12 for a 48-team tournament, 4 pots).
+ * Returns pot number (1-4) based on pick number in the draft.
+ * potSize = number of teams per pot (default 12 for 48-team tournament).
  */
 export function getPotFromPickNumber(pickNumber, potSize = 12) {
-  return Math.floor(pickNumber / potSize) + 1;
+  return Math.floor((pickNumber - 1) / potSize) + 1;
 }
 
 /**
- * Returns the round number (1-based) for the given pick number (0-based).
+ * Returns the round number (1-indexed) for a given pick number and number of players.
  */
 export function getRoundFromPickNumber(pickNumber, numPlayers) {
-  if (!numPlayers || numPlayers === 0) return 1;
-  return Math.floor(pickNumber / numPlayers) + 1;
+  return Math.ceil(pickNumber / numPlayers);
 }
