@@ -1,185 +1,390 @@
+// Copa — the Copa Fantasy mascot. A soccer ball with arms, legs and attitude.
+//
 // <Mascot pose="idle" size={120} />
 // <Mascot pose="excited" size={80} />
 // <Mascot pose="celebrating" size={160} />
 // <Mascot pose="thinking" size={100} />
 // <Mascot pose="waiting" size={100} />
+//
+// Drawn in a fixed 200x250 viewBox and scaled via `size` (width in px).
+
+const INK = '#15152a';
+const BALL_HI = '#ffffff';
+const BALL_LO = '#d4d6e2';
+const GOLD = '#FFD700';
+const GOLD_DARK = '#b8960c';
+const BLUSH = '#ff8fa3';
+const TONGUE = '#ff6b81';
+
+// Pentagon as an SVG points string
+const pent = (cx, cy, r, rot = -Math.PI / 2) =>
+  Array.from({ length: 5 }, (_, i) => {
+    const a = rot + (i * 2 * Math.PI) / 5;
+    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+
+// An outlined limb: ink underlay stroke + colored stroke on top
+function Limb({ d, width = 10, fill = BALL_HI }) {
+  return (
+    <>
+      <path d={d} fill="none" stroke={INK} strokeWidth={width + 5} strokeLinecap="round" />
+      <path d={d} fill="none" stroke={fill} strokeWidth={width} strokeLinecap="round" />
+    </>
+  );
+}
+
+// Mitten glove hand
+function Hand({ x, y, r = 10 }) {
+  return <circle cx={x} cy={y} r={r} fill={BALL_HI} stroke={INK} strokeWidth="3.5" />;
+}
+
+// Gold boot. dir = -1 toe points left, 1 toe points right
+function Boot({ x, y, dir = -1 }) {
+  const toe = 19 * dir;
+  return (
+    <g>
+      <path
+        d={`M ${x - 8 * dir} ${y - 14}
+            L ${x - 8 * dir} ${y - 2}
+            Q ${x - 8 * dir} ${y + 4} ${x - 2 * dir} ${y + 4}
+            L ${x + toe} ${y + 4}
+            Q ${x + toe + 5 * dir} ${y + 4} ${x + toe + 5 * dir} ${y - 2}
+            Q ${x + toe + 5 * dir} ${y - 8} ${x + toe - 6 * dir} ${y - 9}
+            Q ${x + 6 * dir} ${y - 10} ${x + 4 * dir} ${y - 14}
+            Z`}
+        fill={GOLD}
+        stroke={INK}
+        strokeWidth="3"
+        strokeLinejoin="round"
+      />
+      {/* sole */}
+      <path
+        d={`M ${x - 8 * dir} ${y + 4} L ${x + toe + 5 * dir} ${y + 4}`}
+        stroke={GOLD_DARK}
+        strokeWidth="3.5"
+        strokeLinecap="round"
+      />
+      {/* lace */}
+      <path
+        d={`M ${x - 1 * dir} ${y - 10} L ${x + 3 * dir} ${y - 4}`}
+        stroke={INK}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
+
+// Four-point sparkle star
+function Spark({ x, y, r, fill }) {
+  const d = `M ${x} ${y - r}
+             Q ${x + r * 0.2} ${y - r * 0.2} ${x + r} ${y}
+             Q ${x + r * 0.2} ${y + r * 0.2} ${x} ${y + r}
+             Q ${x - r * 0.2} ${y + r * 0.2} ${x - r} ${y}
+             Q ${x - r * 0.2} ${y - r * 0.2} ${x} ${y - r} Z`;
+  return <path d={d} fill={fill} />;
+}
 
 export default function Mascot({ pose = 'idle', size = 120 }) {
-  const s = size;
-  const cx = s / 2;
-  const cy = s / 2;
-  const r = s * 0.32;
+  const p = ['idle', 'excited', 'thinking', 'celebrating', 'waiting'].includes(pose)
+    ? pose
+    : 'idle';
 
-  // Arm configs per pose
+  // Ball: center (100,105), radius 68
   const arms = {
     idle: {
-      left:  { x1: cx - r * 0.85, y1: cy + r * 0.1,  x2: cx - r * 1.5, y2: cy + r * 0.55 },
-      right: { x1: cx + r * 0.85, y1: cy + r * 0.1,  x2: cx + r * 1.5, y2: cy + r * 0.55 },
+      left: 'M 40 116 Q 24 126 19 142',
+      right: 'M 160 116 Q 176 126 181 142',
+      hands: [[19, 142], [181, 142]],
     },
     excited: {
-      left:  { x1: cx - r * 0.85, y1: cy - r * 0.1, x2: cx - r * 1.6, y2: cy - r * 0.85 },
-      right: { x1: cx + r * 0.85, y1: cy - r * 0.1, x2: cx + r * 1.6, y2: cy - r * 0.85 },
+      left: 'M 42 96 Q 24 74 17 52',
+      right: 'M 158 96 Q 176 74 183 52',
+      hands: [[17, 52], [183, 52]],
     },
     thinking: {
-      left:  { x1: cx - r * 0.85, y1: cy + r * 0.1, x2: cx - r * 1.5, y2: cy + r * 0.55 },
-      right: { x1: cx + r * 0.85, y1: cy - r * 0.1, x2: cx + r * 0.6,  y2: cy - r * 0.7 },
+      left: 'M 40 116 Q 24 126 19 142',
+      right: 'M 161 112 Q 178 142 142 152',
+      hands: [[19, 142], [138, 152]],
     },
     celebrating: {
-      left:  { x1: cx - r * 0.85, y1: cy - r * 0.2, x2: cx - r * 1.7, y2: cy - r * 1.1 },
-      right: { x1: cx + r * 0.85, y1: cy - r * 0.2, x2: cx + r * 1.7, y2: cy - r * 1.1 },
+      left: 'M 46 88 Q 32 56 28 32',
+      right: 'M 154 88 Q 168 56 172 32',
+      hands: [[28, 32], [172, 32]],
     },
     waiting: {
-      left:  { x1: cx - r * 0.85, y1: cy + r * 0.1, x2: cx - r * 0.2, y2: cy + r * 0.6 },
-      right: { x1: cx + r * 0.85, y1: cy + r * 0.1, x2: cx + r * 0.2, y2: cy + r * 0.6 },
+      left: 'M 40 110 Q 14 130 37 148',
+      right: 'M 160 110 Q 186 130 163 148',
+      hands: [[39, 148], [161, 148]],
     },
-  };
+  }[p];
 
-  // Mouth path per pose
-  const mouths = {
-    idle:        `M ${cx - r*0.25} ${cy + r*0.3} Q ${cx} ${cy + r*0.5} ${cx + r*0.25} ${cy + r*0.3}`,
-    excited:     `M ${cx - r*0.3}  ${cy + r*0.25} Q ${cx} ${cy + r*0.58} ${cx + r*0.3} ${cy + r*0.25}`,
-    thinking:    `M ${cx - r*0.2}  ${cy + r*0.32} Q ${cx + r*0.05} ${cy + r*0.38} ${cx + r*0.2} ${cy + r*0.28}`,
-    celebrating: `M ${cx - r*0.35} ${cy + r*0.22} Q ${cx} ${cy + r*0.65} ${cx + r*0.35} ${cy + r*0.22}`,
-    waiting:     `M ${cx - r*0.25} ${cy + r*0.38} Q ${cx} ${cy + r*0.28} ${cx + r*0.25} ${cy + r*0.38}`,
-  };
-
-  // Eyebrow tilt per pose
-  const brows = {
-    idle:        { lx1: cx-r*0.38, ly1: cy-r*0.18, lx2: cx-r*0.12, ly2: cy-r*0.22, rx1: cx+r*0.12, ry1: cy-r*0.22, rx2: cx+r*0.38, ry2: cy-r*0.18 },
-    excited:     { lx1: cx-r*0.38, ly1: cy-r*0.28, lx2: cx-r*0.12, ly2: cy-r*0.18, rx1: cx+r*0.12, ry1: cy-r*0.18, rx2: cx+r*0.38, ry2: cy-r*0.28 },
-    thinking:    { lx1: cx-r*0.38, ly1: cy-r*0.14, lx2: cx-r*0.12, ly2: cy-r*0.24, rx1: cx+r*0.12, ry1: cy-r*0.28, rx2: cx+r*0.38, ry2: cy-r*0.14 },
-    celebrating: { lx1: cx-r*0.38, ly1: cy-r*0.30, lx2: cx-r*0.12, ly2: cy-r*0.16, rx1: cx+r*0.12, ry1: cy-r*0.16, rx2: cx+r*0.38, ry2: cy-r*0.30 },
-    waiting:     { lx1: cx-r*0.38, ly1: cy-r*0.20, lx2: cx-r*0.12, ly2: cy-r*0.14, rx1: cx+r*0.12, ry1: cy-r*0.14, rx2: cx+r*0.38, ry2: cy-r*0.20 },
-  };
-
-  const arm = arms[pose] || arms.idle;
-  const mouth = mouths[pose] || mouths.idle;
-  const brow = brows[pose] || brows.idle;
-  const armWidth = Math.max(3, r * 0.22);
-  const legW = r * 0.28;
-  const legH = r * 0.55;
-  const footW = r * 0.38;
-  const footH = r * 0.22;
-  const legY = cy + r * 0.88;
-  const eyeR = r * 0.13;
-  const pupilR = eyeR * 0.55;
-
-  // Pupil offset (thinking looks left, waiting looks right)
-  const pupilOff = { idle: 0, excited: 0, thinking: -eyeR*0.35, celebrating: 0, waiting: eyeR*0.3 };
-  const po = pupilOff[pose] || 0;
-
-  // Animation class
   const animClass = {
+    idle: 'mascot-bob',
     excited: 'mascot-bounce',
-    celebrating: 'mascot-wiggle',
+    celebrating: 'mascot-cheer',
     waiting: 'mascot-tap',
-  }[pose] || '';
+  }[p] || '';
 
-  // Soccer ball pentagon patches (simplified pattern)
-  const patches = [
-    `M ${cx} ${cy - r*0.45} l ${r*0.18} ${r*0.28} l ${-r*0.36} 0 Z`,
-    `M ${cx - r*0.38} ${cy + r*0.12} l ${r*0.22} ${-r*0.18} l ${r*0.14} ${r*0.32} l ${-r*0.28} ${r*0.1} Z`,
-    `M ${cx + r*0.38} ${cy + r*0.12} l ${-r*0.22} ${-r*0.18} l ${-r*0.14} ${r*0.32} l ${r*0.28} ${r*0.1} Z`,
-  ];
+  const eyes = (() => {
+    switch (p) {
+      case 'celebrating':
+        // closed happy arcs
+        return (
+          <>
+            <path d="M 67 102 Q 78 90 89 102" fill="none" stroke={INK} strokeWidth="6" strokeLinecap="round" />
+            <path d="M 111 102 Q 122 90 133 102" fill="none" stroke={INK} strokeWidth="6" strokeLinecap="round" />
+          </>
+        );
+      case 'waiting':
+        // half-lidded, glancing sideways
+        return (
+          <>
+            <ellipse cx="78" cy="104" rx="10" ry="12" fill={INK} />
+            <ellipse cx="122" cy="104" rx="10" ry="12" fill={INK} />
+            <path d="M 68 104 A 10 12 0 0 1 88 104 Z" fill="#e9eaf2" />
+            <path d="M 112 104 A 10 12 0 0 1 132 104 Z" fill="#e9eaf2" />
+            <path d="M 68 104 L 88 104" stroke={INK} strokeWidth="3.5" strokeLinecap="round" />
+            <path d="M 112 104 L 132 104" stroke={INK} strokeWidth="3.5" strokeLinecap="round" />
+            <circle cx="82.5" cy="108" r="2.2" fill="white" />
+            <circle cx="126.5" cy="108" r="2.2" fill="white" />
+          </>
+        );
+      case 'thinking': {
+        // pupils up and to the side
+        return (
+          <>
+            <ellipse cx="78" cy="102" rx="10" ry="13" fill={INK} />
+            <ellipse cx="122" cy="102" rx="10" ry="13" fill={INK} />
+            <circle cx="82" cy="97" r="3.6" fill="white" />
+            <circle cx="126" cy="97" r="3.6" fill="white" />
+            <circle cx="75.5" cy="106" r="1.8" fill="white" opacity="0.85" />
+            <circle cx="119.5" cy="106" r="1.8" fill="white" opacity="0.85" />
+          </>
+        );
+      }
+      default:
+        // big sparkly eyes (idle, excited)
+        return (
+          <>
+            <ellipse cx="78" cy="102" rx="10" ry="13" fill={INK} />
+            <ellipse cx="122" cy="102" rx="10" ry="13" fill={INK} />
+            <circle cx="81.5" cy="97.5" r="3.8" fill="white" />
+            <circle cx="125.5" cy="97.5" r="3.8" fill="white" />
+            <circle cx="75" cy="106.5" r="1.9" fill="white" opacity="0.85" />
+            <circle cx="119" cy="106.5" r="1.9" fill="white" opacity="0.85" />
+          </>
+        );
+    }
+  })();
+
+  const brows = (() => {
+    switch (p) {
+      case 'excited':
+        return (
+          <>
+            <path d="M 67 85 Q 78 79 89 85" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />
+            <path d="M 111 85 Q 122 79 133 85" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />
+          </>
+        );
+      case 'thinking':
+        return (
+          <>
+            <path d="M 68 87 Q 78 84 88 86" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />
+            <path d="M 112 82 Q 122 77 132 81" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />
+          </>
+        );
+      case 'waiting':
+        return (
+          <>
+            <path d="M 68 90 Q 78 88 88 90" fill="none" stroke={INK} strokeWidth="4" strokeLinecap="round" />
+            <path d="M 112 90 Q 122 88 132 90" fill="none" stroke={INK} strokeWidth="4" strokeLinecap="round" />
+          </>
+        );
+      default:
+        return null;
+    }
+  })();
+
+  const mouth = (() => {
+    switch (p) {
+      case 'excited':
+        return (
+          <g>
+            <path d="M 82 126 Q 100 152 118 126 Q 100 134 82 126 Z" fill={INK} />
+            <clipPath id={`copa-mouth-${p}`}>
+              <path d="M 82 126 Q 100 152 118 126 Q 100 134 82 126 Z" />
+            </clipPath>
+            <ellipse cx="100" cy="143" rx="11" ry="7" fill={TONGUE} clipPath={`url(#copa-mouth-${p})`} />
+          </g>
+        );
+      case 'celebrating':
+        return (
+          <g>
+            <path d="M 78 122 Q 100 158 122 122 Q 100 132 78 122 Z" fill={INK} />
+            <clipPath id={`copa-mouth-${p}`}>
+              <path d="M 78 122 Q 100 158 122 122 Q 100 132 78 122 Z" />
+            </clipPath>
+            <ellipse cx="100" cy="144" rx="13" ry="8" fill={TONGUE} clipPath={`url(#copa-mouth-${p})`} />
+          </g>
+        );
+      case 'thinking':
+        return <path d="M 90 134 Q 100 130 110 135" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />;
+      case 'waiting':
+        return <path d="M 88 136 Q 100 132 112 136" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />;
+      default:
+        return <path d="M 86 130 Q 100 142 114 130" fill="none" stroke={INK} strokeWidth="4.5" strokeLinecap="round" />;
+    }
+  })();
+
+  const blush = (p === 'idle' || p === 'excited' || p === 'celebrating') && (
+    <>
+      <ellipse cx="60" cy="120" rx="9" ry="5.5" fill={BLUSH} opacity="0.55" />
+      <ellipse cx="140" cy="120" rx="9" ry="5.5" fill={BLUSH} opacity="0.55" />
+    </>
+  );
+
+  const extras = (() => {
+    switch (p) {
+      case 'celebrating':
+        return (
+          <g>
+            <Spark x={34} y={62} r={9} fill={GOLD} />
+            <Spark x={170} y={50} r={7} fill="#22c55e" />
+            <Spark x={140} y={18} r={6} fill="#3b82f6" />
+            <Spark x={62} y={22} r={7} fill={GOLD} />
+            <Spark x={188} y={92} r={5} fill={BLUSH} />
+            <circle cx="14" cy="92" r="3.5" fill="#22c55e" />
+            <circle cx="104" cy="10" r="3" fill={BLUSH} />
+          </g>
+        );
+      case 'thinking':
+        return (
+          <g>
+            <circle cx="166" cy="58" r="4.5" fill="#8b93a3" opacity="0.6" />
+            <circle cx="176" cy="42" r="6.5" fill="#8b93a3" opacity="0.6" />
+            <circle cx="186" cy="22" r="11" fill="#cfd4de" />
+            <text
+              x="186" y="23.5"
+              textAnchor="middle" dominantBaseline="middle"
+              fontFamily="Arial, sans-serif" fontSize="15" fontWeight="bold" fill={INK}
+              style={{ userSelect: 'none' }}
+            >?</text>
+          </g>
+        );
+      case 'excited':
+        return (
+          <g>
+            <Spark x={28} y={70} r={6} fill={GOLD} />
+            <Spark x={174} y={66} r={5} fill={GOLD} />
+          </g>
+        );
+      case 'waiting':
+        return (
+          <path
+            d="M 158 56 Q 165 68 158 73 Q 151 68 158 56 Z"
+            fill="#7cc4ff" stroke="#4ea3e8" strokeWidth="1.5"
+          />
+        );
+      default:
+        return null;
+    }
+  })();
 
   return (
     <svg
-      width={s}
-      height={s * 1.35}
-      viewBox={`0 0 ${s} ${s * 1.35}`}
-      className={animClass}
+      width={size}
+      height={size * 1.25}
+      viewBox="0 0 200 250"
+      className={animClass ? `mascot-svg ${animClass}` : 'mascot-svg'}
       style={{ display: 'block', overflow: 'visible' }}
     >
       <defs>
         <style>{`
-          @keyframes mascot-bounce-kf {
-            0%,100% { transform: translateY(0); }
-            50% { transform: translateY(-${r * 0.22}px); }
+          @keyframes mascot-bob-kf {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-3%); }
           }
-          @keyframes mascot-wiggle-kf {
-            0% { transform: rotate(-8deg); }
-            100% { transform: rotate(8deg); }
+          @keyframes mascot-bounce-kf {
+            0%, 100% { transform: translateY(0) scale(1, 1); }
+            30% { transform: translateY(0) scale(1.04, 0.94); }
+            60% { transform: translateY(-9%) scale(0.97, 1.04); }
+          }
+          @keyframes mascot-cheer-kf {
+            0% { transform: rotate(-5deg) translateY(0); }
+            50% { transform: rotate(0deg) translateY(-5%); }
+            100% { transform: rotate(5deg) translateY(0); }
           }
           @keyframes mascot-tap-kf {
-            0%,90%,100% { transform: translateY(0); }
-            95% { transform: translateY(-${r * 0.08}px); }
+            0%, 86%, 100% { transform: translateY(0); }
+            90% { transform: translateY(-1.5%); }
+            94% { transform: translateY(0); }
+            97% { transform: translateY(-1.5%); }
           }
-          .mascot-bounce { animation: mascot-bounce-kf 0.65s ease-in-out infinite; transform-origin: center bottom; }
-          .mascot-wiggle { animation: mascot-wiggle-kf 0.5s ease-in-out infinite alternate; transform-origin: center center; }
-          .mascot-tap    { animation: mascot-tap-kf 2.8s ease-in-out infinite; transform-origin: center bottom; }
+          .mascot-bob    { animation: mascot-bob-kf 3.2s ease-in-out infinite; }
+          .mascot-bounce { animation: mascot-bounce-kf 0.7s ease-in-out infinite; transform-origin: 50% 88%; }
+          .mascot-cheer  { animation: mascot-cheer-kf 0.55s ease-in-out infinite alternate; transform-origin: 50% 70%; }
+          .mascot-tap    { animation: mascot-tap-kf 2.6s ease-in-out infinite; transform-origin: 50% 88%; }
         `}</style>
-        <radialGradient id={`mg-${pose}`} cx="40%" cy="35%" r="60%">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor="#d8d8d8" />
+        <radialGradient id="copa-ball" cx="38%" cy="30%" r="75%">
+          <stop offset="0%" stopColor={BALL_HI} />
+          <stop offset="70%" stopColor="#eceef5" />
+          <stop offset="100%" stopColor={BALL_LO} />
         </radialGradient>
+        <clipPath id="copa-ballclip">
+          <circle cx="100" cy="105" r="66" />
+        </clipPath>
       </defs>
 
-      {/* Sparkles for celebrating */}
-      {pose === 'celebrating' && <>
-        <text x={cx - r*1.5} y={cy - r*0.6} fontSize={r*0.45} style={{userSelect:'none'}}>✨</text>
-        <text x={cx + r*0.95} y={cy - r*0.8} fontSize={r*0.38} style={{userSelect:'none'}}>⭐</text>
-        <text x={cx - r*0.3} y={cy - r*1.1} fontSize={r*0.35} style={{userSelect:'none'}}>🌟</text>
-      </>}
+      {/* ground shadow */}
+      <ellipse cx="100" cy="226" rx="52" ry="8" fill="#000" opacity="0.35" />
 
-      {/* Thinking bubble */}
-      {pose === 'thinking' && <>
-        <circle cx={cx + r*1.0} cy={cy - r*0.8} r={r*0.08} fill="#8b93a3" opacity="0.5"/>
-        <circle cx={cx + r*1.2} cy={cy - r*1.1} r={r*0.13} fill="#8b93a3" opacity="0.5"/>
-        <circle cx={cx + r*1.45} cy={cy - r*1.4} r={r*0.22} fill="#8b93a3" opacity="0.4"/>
-        <text x={cx + r*1.3} y={cy - r*1.3} textAnchor="middle" dominantBaseline="middle" fontSize={r*0.28} style={{userSelect:'none'}}>?</text>
-      </>}
+      {extras}
 
-      {/* Left arm */}
-      <line
-        x1={arm.left.x1} y1={arm.left.y1}
-        x2={arm.left.x2} y2={arm.left.y2}
-        stroke="#1a1a2e" strokeWidth={armWidth} strokeLinecap="round"
-      />
-      {/* Right arm */}
-      <line
-        x1={arm.right.x1} y1={arm.right.y1}
-        x2={arm.right.x2} y2={arm.right.y2}
-        stroke="#1a1a2e" strokeWidth={armWidth} strokeLinecap="round"
-      />
+      {/* arms (behind ball) */}
+      <Limb d={arms.left} />
+      <Limb d={arms.right} />
 
-      {/* Legs */}
-      <rect x={cx - legW*1.4} y={legY} width={legW} height={legH} rx={legW*0.4} fill="#1a1a2e"/>
-      <rect x={cx + legW*0.4}  y={legY} width={legW} height={legH} rx={legW*0.4} fill="#1a1a2e"/>
+      {/* legs */}
+      <Limb d="M 84 162 L 80 198" width={11} />
+      <Limb d="M 116 162 L 120 198" width={11} />
+      <Boot x={78} y={216} dir={-1} />
+      <Boot x={122} y={216} dir={1} />
 
-      {/* Boots */}
-      <ellipse cx={cx - legW*1.05} cy={legY + legH} rx={footW*0.6} ry={footH*0.6} fill="#c8963a"/>
-      <ellipse cx={cx + legW*0.8}  cy={legY + legH} rx={footW*0.6} ry={footH*0.6} fill="#c8963a"/>
+      {/* ball body */}
+      <circle cx="100" cy="105" r="68" fill={INK} />
+      <circle cx="100" cy="105" r="65" fill="url(#copa-ball)" />
 
-      {/* Ball body */}
-      <circle cx={cx} cy={cy} r={r} fill={`url(#mg-${pose})`} stroke="#e0e0e0" strokeWidth={r*0.04}/>
+      {/* soccer pattern, clipped to ball */}
+      <g clipPath="url(#copa-ballclip)" fill={INK}>
+        <polygon points={pent(100, 52, 21)} />
+        <polygon points={pent(36, 96, 19, -Math.PI / 2 + 0.45)} />
+        <polygon points={pent(164, 96, 19, -Math.PI / 2 - 0.45)} />
+        <polygon points={pent(58, 165, 17, -Math.PI / 2 + 0.25)} />
+        <polygon points={pent(142, 165, 17, -Math.PI / 2 - 0.25)} />
+        {/* seams */}
+        <g stroke={INK} strokeWidth="2.5" fill="none" opacity="0.55">
+          <path d="M 100 31 L 100 40" />
+          <path d="M 81 58 Q 64 70 52 84" />
+          <path d="M 119 58 Q 136 70 148 84" />
+          <path d="M 44 113 Q 50 138 52 152" />
+          <path d="M 156 113 Q 150 138 148 152" />
+          <path d="M 72 168 Q 100 176 128 168" />
+        </g>
+      </g>
 
-      {/* Soccer patches */}
-      {patches.map((d, i) => (
-        <path key={i} d={d} fill="#1a1a2e" opacity="0.85"/>
-      ))}
+      {/* glossy highlight */}
+      <ellipse cx="72" cy="62" rx="22" ry="13" fill="white" opacity="0.5" transform="rotate(-28 72 62)" />
 
-      {/* Eyebrows */}
-      <line x1={brow.lx1} y1={brow.ly1} x2={brow.lx2} y2={brow.ly2} stroke="#1a1a2e" strokeWidth={r*0.08} strokeLinecap="round"/>
-      <line x1={brow.rx1} y1={brow.ry1} x2={brow.rx2} y2={brow.ry2} stroke="#1a1a2e" strokeWidth={r*0.08} strokeLinecap="round"/>
+      {/* face */}
+      {brows}
+      {eyes}
+      {blush}
+      {mouth}
 
-      {/* Eyes */}
-      <circle cx={cx - r*0.25} cy={cy - r*0.04} r={eyeR} fill="white" stroke="#1a1a2e" strokeWidth={r*0.04}/>
-      <circle cx={cx + r*0.25} cy={cy - r*0.04} r={eyeR} fill="white" stroke="#1a1a2e" strokeWidth={r*0.04}/>
-      {/* Pupils */}
-      <circle cx={cx - r*0.25 + po} cy={cy - r*0.04} r={pupilR} fill="#1a1a2e"/>
-      <circle cx={cx + r*0.25 + po} cy={cy - r*0.04} r={pupilR} fill="#1a1a2e"/>
-      {/* Eye shine */}
-      <circle cx={cx - r*0.25 + po + pupilR*0.3} cy={cy - r*0.04 - pupilR*0.35} r={pupilR*0.28} fill="white"/>
-      <circle cx={cx + r*0.25 + po + pupilR*0.3} cy={cy - r*0.04 - pupilR*0.35} r={pupilR*0.28} fill="white"/>
-
-      {/* Mouth */}
-      <path d={mouth} fill="none" stroke="#1a1a2e" strokeWidth={r*0.09} strokeLinecap="round"/>
-
-      {/* Rosy cheeks for excited/celebrating */}
-      {(pose === 'excited' || pose === 'celebrating') && <>
-        <ellipse cx={cx - r*0.48} cy={cy + r*0.18} rx={r*0.15} ry={r*0.09} fill="#ff9999" opacity="0.45"/>
-        <ellipse cx={cx + r*0.48} cy={cy + r*0.18} rx={r*0.15} ry={r*0.09} fill="#ff9999" opacity="0.45"/>
-      </>}
+      {/* hands (in front of ball) */}
+      <Hand x={arms.hands[0][0]} y={arms.hands[0][1]} />
+      <Hand x={arms.hands[1][0]} y={arms.hands[1][1]} />
     </svg>
   );
 }
