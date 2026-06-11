@@ -1,39 +1,32 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase';
 
 export function useNotifications(myPlayerId) {
   const [unread, setUnread] = useState([]);
-  const [showPoke, setShowPoke] = useState(false);
-  const [pokeMessage, setPokeMessage] = useState('');
 
   useEffect(() => {
     if (!myPlayerId) return;
-    supabase.from('notifications').select('*').eq('game_player_id', myPlayerId).eq('read', false)
-      .then(({ data }) => setUnread(data || []));
+    let sub;
 
-    const channel = supabase.channel(`notif-${myPlayerId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'notifications', filter: `game_player_id=eq.${myPlayerId}`
-      }, payload => {
-        setUnread(prev => [...prev, payload.new]);
-        setPokeMessage(payload.new.message || 'You have been poked!');
-        setShowPoke(true);
-      })
+    async function load() {
+      const { data } = await supabase.from('notifications').select('*')
+        .eq('game_player_id', myPlayerId).eq('read', false).order('created_at', { ascending: false });
+      setUnread(data || []);
+    }
+    load();
+
+    sub = supabase.channel('notifs-' + myPlayerId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'game_player_id=eq.' + myPlayerId },
+        (p) => setUnread(prev => [p.new, ...prev]))
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => { supabase.removeChannel(sub); };
   }, [myPlayerId]);
 
-  const dismissPoke = async () => {
-    setShowPoke(false);
-    if (unread.length > 0) {
-      await supabase.from('notifications')
-        .update({ read: true })
-        .eq('game_player_id', myPlayerId)
-        .eq('read', false);
-      setUnread([]);
-    }
-  };
+  async function markRead(notifId) {
+    await supabase.from('notifications').update({ read: true }).eq('id', notifId);
+    setUnread(prev => prev.filter(n => n.id !== notifId));
+  }
 
-  return { unread, showPoke, dismissPoke, pokeMessage };
+  return { unread, markRead };
 }

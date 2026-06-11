@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase';
 
 export function useDraft(gameId) {
   const [picks, setPicks] = useState([]);
@@ -7,17 +7,21 @@ export function useDraft(gameId) {
 
   useEffect(() => {
     if (!gameId) return;
-    setLoading(true);
-    supabase.from('draft_picks').select('*').eq('game_id', gameId).order('pick_number', { ascending: true })
-      .then(({ data }) => { setPicks(data || []); setLoading(false); });
+    let sub;
 
-    const channel = supabase.channel(`draft-${gameId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `game_id=eq.${gameId}`
-      }, payload => setPicks(prev => [...prev, payload.new].sort((a,b) => a.pick_number - b.pick_number)))
+    async function load() {
+      const { data } = await supabase.from('draft_picks').select('*').eq('game_id', gameId).order('pick_number');
+      setPicks(data || []);
+      setLoading(false);
+    }
+    load();
+
+    sub = supabase.channel('picks-' + gameId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: 'game_id=eq.' + gameId },
+        (p) => setPicks(prev => [...prev, p.new]))
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => { supabase.removeChannel(sub); };
   }, [gameId]);
 
   return { picks, loading };

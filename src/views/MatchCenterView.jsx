@@ -1,140 +1,197 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { getOrCreateToken } from '../lib/session';
+import { getGameId, getOrCreateToken } from '../lib/session';
 import FixtureCard from '../components/FixtureCard';
 import EventTicker from '../components/EventTicker';
 
+const LIVE_STATUSES = ['1H', '2H', 'ET', 'P', 'HT', 'BT'];
+
 export default function MatchCenterView() {
+  const navigate = useNavigate();
   const [fixtures, setFixtures] = useState([]);
   const [events, setEvents] = useState([]);
   const [myTeamApiIds, setMyTeamApiIds] = useState([]);
   const [myPlayerApiIds, setMyPlayerApiIds] = useState([]);
+  const [teamsMap, setTeamsMap] = useState({});
   const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [lastRefresh, setLastRefresh] = useState(null);
 
-  const token = getOrCreateToken();
+  const gameId = getGameId();
+  const myToken = getOrCreateToken();
+
+  const loadData = useCallback(async () => {
+    try {
+      // Load teams map
+      const { data: teamsData } = await supabase.from('teams').select('*');
+      const tm = {};
+      if (teamsData) teamsData.forEach((t) => { tm[t.api_id] = t; });
+      setTeamsMap(tm);
+
+      // Load today's fixtures (and recent)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const { data: fixturesData } = await supabase
+        .from('fixtures')
+        .select('*')
+        .gte('kickoff', today.toISOString())
+        .lt('kickoff', tomorrow.toISOString())
+        .order('kickoff', { ascending: true });
+
+      // Enrich fixtures with team info
+      const enriched = (fixturesData || []).map((f) => ({
+        ...f,
+        home_name: tm[f.home_team_api_id]?.name || null,
+        home_logo: tm[f.home_team_api_id]?.logo_url || null,
+        away_name: tm[f.away_team_api_id]?.name || null,
+        away_logo: tm[f.away_team_api_id]?.logo_url || null,
+      }));
+      setFixtures(enriched);
+
+      // Load my teams if in a game
+      if (gameId) {
+        const { data: gp } = await supabase
+          .from('game_players')
+          .select('id')
+          .eq('game_id', gameId)
+          .eq('session_token', myToken)
+          .single();
+
+        if (gp) {
+          const { data: myPicks } = await supabase
+            .from('draft_picks')
+            .select('team_api_id')
+            .eq('game_id', gameId)
+            .eq('player_id', gp.id);
+          setMyTeamApiIds((myPicks || []).map((p) => p.team_api_id));
+
+          const { data: myPP } = await supabase
+            .from('player_picks')
+            .select('player_api_id')
+            .eq('game_id', gameId)
+            .eq('game_player_id', gp.id);
+          setMyPlayerApiIds((myPP || []).map((p) => p.player_api_id));
+        }
+      }
+
+      // Load live match events
+      const liveIds = (fixturesData || [])
+        .filter((f) => LIVE_STATUSES.includes(f.status_short))
+        .map((f) => f.api_id);
+
+      if (liveIds.length > 0) {
+        const { data: evData } = await supabase
+          .from('match_events')
+          .select('*')
+          .in('fixture_api_id', liveIds)
+          .order('elapsed', { ascending: false })
+          .limit(50);
+        setEvents(evData || []);
+      } else {
+        setEvents([]);
+      }
+
+      setLastRefresh(new Date());
+    } catch (err) {
+      console.error('Error loading match center:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [gameId, myToken]);
 
   useEffect(() => {
-    loadAll();
-    const interval = setInterval(() => {
-      loadAll();
-      setLastRefresh(new Date());
-    }, 30000);
+    loadData();
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadData]);
 
-  async function loadAll() {
-    await Promise.all([loadFixtures(), loadMyTeams()]);
-  }
-
-  async function loadFixtures() {
-    const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase
-      .from('fixtures')
-      .select('*')
-      .gte('kickoff', `${today}T00:00:00`)
-      .lte('kickoff', `${today}T23:59:59`)
-      .order('kickoff', { ascending: true });
-
-    if (data) {
-      setFixtures(data);
-      const liveIds = data
-        .filter((f) => ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(f.status_short))
-        .map((f) => f.api_id);
-      if (liveIds.length > 0) loadEvents(liveIds);
-    }
-    setLoading(false);
-  }
-
-  async function loadEvents(fixtureApiIds) {
-    const { data } = await supabase
-      .from('match_events')
-      .select('*')
-      .in('fixture_api_id', fixtureApiIds)
-      .order('elapsed', { ascending: true });
-    if (data) setEvents(data);
-  }
-
-  async function loadMyTeams() {
-    // Find the player record for the current session across all games
-    const { data: gamePlayers } = await supabase
-      .from('game_players')
-      .select('id')
-      .eq('session_token', token);
-
-    if (!gamePlayers || gamePlayers.length === 0) return;
-    const gpIds = gamePlayers.map((gp) => gp.id);
-
-    const { data: draftPicks } = await supabase
-      .from('draft_picks')
-      .select('team_api_id')
-      .in('player_id', gpIds);
-    if (draftPicks) setMyTeamApiIds(draftPicks.map((d) => d.team_api_id));
-
-    const { data: playerPicks } = await supabase
-      .from('player_picks')
-      .select('player_api_id')
-      .in('game_player_id', gpIds);
-    if (playerPicks) setMyPlayerApiIds(playerPicks.map((p) => p.player_api_id));
-  }
-
-  const liveFixtures = fixtures.filter((f) => ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(f.status_short));
-  const upcomingFixtures = fixtures.filter((f) => ['NS', 'TBD'].includes(f.status_short));
+  const liveFixtures = fixtures.filter((f) => LIVE_STATUSES.includes(f.status_short));
+  const upcomingFixtures = fixtures.filter((f) => f.status_short === 'NS');
   const finishedFixtures = fixtures.filter((f) => ['FT', 'AET', 'PEN'].includes(f.status_short));
 
   if (loading) {
-    return <div className="view"><div className="spinner" /></div>;
+    return (
+      <div className="loading-screen">
+        <div className="spinner" />
+        <p>Loading matches…</p>
+      </div>
+    );
   }
 
   return (
-    <div className="view">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1>Match Centre</h1>
-        <span className="muted text-xs">
-          Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </span>
+    <div style={{ paddingBottom: 32 }}>
+      <div className="nav">
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)}>← Back</button>
+        <span className="nav-logo">Match Centre</span>
+        <div className="flex items-center gap-2">
+          {lastRefresh && (
+            <span className="text-xs text-muted">↻ {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={loadData}>Refresh</button>
+        </div>
       </div>
 
-      {liveFixtures.length > 0 && (
-        <>
-          <div className="section-title" style={{ color: 'var(--danger)' }}>🔴 Live</div>
-          {liveFixtures.map((f) => (
-            <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive />
-          ))}
-          {events.length > 0 && (
-            <div style={{ marginTop: 16, marginBottom: 24 }}>
-              <div className="section-title">Match Events</div>
+      <div className="page" style={{ paddingTop: 16 }}>
+        <div className="container">
+
+          {/* Live events ticker */}
+          {liveFixtures.length > 0 && events.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div className="pot-section__title mb-2">Live Events</div>
               <EventTicker events={events} myPlayerApiIds={myPlayerApiIds} myTeamApiIds={myTeamApiIds} />
             </div>
           )}
-        </>
-      )}
 
-      {upcomingFixtures.length > 0 && (
-        <>
-          <div className="section-title">Upcoming Today</div>
-          {upcomingFixtures.map((f) => (
-            <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} />
-          ))}
-        </>
-      )}
+          {/* Live fixtures */}
+          {liveFixtures.length > 0 && (
+            <div className="pot-section">
+              <div className="pot-section__title">
+                <span className="status-pill status-pill--live" style={{ display: 'inline-flex', gap: 6 }}>LIVE</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {liveFixtures.map((f) => (
+                  <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {finishedFixtures.length > 0 && (
-        <>
-          <div className="section-title">Finished</div>
-          {finishedFixtures.map((f) => (
-            <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} />
-          ))}
-        </>
-      )}
+          {/* Upcoming */}
+          {upcomingFixtures.length > 0 && (
+            <div className="pot-section">
+              <div className="pot-section__title">Today's Fixtures</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {upcomingFixtures.map((f) => (
+                  <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive={false} />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {fixtures.length === 0 && (
-        <div className="empty-state">
-          <div className="empty-state__icon">📅</div>
-          <div>No matches today</div>
-          <div className="muted text-sm" style={{ marginTop: 6 }}>Check back on match day</div>
+          {/* Finished */}
+          {finishedFixtures.length > 0 && (
+            <div className="pot-section">
+              <div className="pot-section__title">Results</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {finishedFixtures.map((f) => (
+                  <FixtureCard key={f.id} fixture={f} myTeamApiIds={myTeamApiIds} isLive={false} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {fixtures.length === 0 && (
+            <div className="empty-state">
+              <span className="emoji-big">📅</span>
+              <div className="font-bold mb-2">No fixtures today</div>
+              <p className="text-muted text-sm">Check back when the tournament begins.</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
