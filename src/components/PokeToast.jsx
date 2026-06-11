@@ -1,19 +1,28 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 export default function PokeToast({ message, onDismiss }) {
+  const [visible, setVisible] = useState(false);
+
   useEffect(() => {
-    if (!message) return;
-    const t = setTimeout(onDismiss, 6000);
-    return () => clearTimeout(t);
+    if (message) {
+      setVisible(true);
+      const timer = setTimeout(() => {
+        setVisible(false);
+        setTimeout(onDismiss, 400);
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
   }, [message, onDismiss]);
 
   if (!message) return null;
 
   return (
-    <div className="poke-toast">
-      <span className="poke-toast__icon">👋</span>
-      <span className="poke-toast__msg">{message}</span>
-      <button className="poke-toast__close" onClick={onDismiss}>×</button>
+    <div
+      className={`poke-toast${visible ? ' poke-toast--visible' : ''}`}
+      onClick={() => { setVisible(false); setTimeout(onDismiss, 400); }}
+    >
+      <span style={{ marginRight: 8 }}>👋</span>
+      {message}
     </div>
   );
 }

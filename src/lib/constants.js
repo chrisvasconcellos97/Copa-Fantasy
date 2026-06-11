@@ -1,27 +1,23 @@
 export const SCORING = {
-  team: {
-    group_win: 3,
-    group_draw: 1,
-    group_advance: 5,
-    r32_win: 8,
-    r16_win: 13,
-    qf_win: 20,
-    sf_win: 30,
-    runner_up: 15,
-    champion: 40,
-  },
-  player: {
-    goal: 5,
-    assist: 3,
-    clean_sheet_def: 4,
-    clean_sheet_mid: 2,
-    motm: 3,
-    red_card: -5,
-    own_goal: -5,
-    penalty_miss: -3,
-    golden_boot: 15,
-    golden_ball: 20,
-  },
+  group_win: 3,
+  group_draw: 1,
+  group_advance: 5,
+  r32_win: 8,
+  r16_win: 13,
+  qf_win: 20,
+  sf_win: 30,
+  runner_up: 15,
+  champion: 40,
+  goal: 5,
+  assist: 3,
+  clean_sheet_def: 4,
+  clean_sheet_mid: 2,
+  motm: 3,
+  red_card: -5,
+  own_goal: -5,
+  penalty_miss: -3,
+  golden_boot: 15,
+  golden_ball: 20,
 };
 
 export const RESULT_TYPES = [
@@ -50,18 +46,73 @@ export const BONUS_TYPES = [
 ];
 
 export const FALLBACK_POTS = {
-  1: ['Mexico', 'Canada', 'USA', 'Argentina', 'Brazil', 'France', 'England', 'Germany', 'Portugal', 'Netherlands', 'Spain', 'Belgium'],
-  2: ['Croatia', 'Morocco', 'Colombia', 'Uruguay', 'Switzerland', 'Japan', 'Senegal', 'Iran', 'South Korea', 'Ecuador', 'Austria', 'Australia'],
-  3: ['Norway', 'Panama', 'Egypt', 'Algeria', 'Scotland', 'Paraguay', 'Tunisia', 'Ivory Coast', 'Uzbekistan', 'Qatar', 'Saudi Arabia', 'South Africa'],
-  4: ['Jordan', 'Cape Verde', 'Ghana', 'Curaçao', 'Haiti', 'New Zealand', 'Bosnia & Herzegovina', 'Sweden', 'Türkiye', 'Czechia', 'DR Congo', 'Iraq'],
+  1: [
+    'Mexico',
+    'Canada',
+    'USA',
+    'Argentina',
+    'Brazil',
+    'France',
+    'England',
+    'Germany',
+    'Portugal',
+    'Netherlands',
+    'Spain',
+    'Belgium',
+  ],
+  2: [
+    'Croatia',
+    'Morocco',
+    'Colombia',
+    'Uruguay',
+    'Switzerland',
+    'Japan',
+    'Senegal',
+    'Iran',
+    'South Korea',
+    'Ecuador',
+    'Austria',
+    'Australia',
+  ],
+  3: [
+    'Norway',
+    'Panama',
+    'Egypt',
+    'Algeria',
+    'Scotland',
+    'Paraguay',
+    'Tunisia',
+    'Ivory Coast',
+    'Uzbekistan',
+    'Qatar',
+    'Saudi Arabia',
+    'South Africa',
+  ],
+  4: [
+    'Jordan',
+    'Cape Verde',
+    'Ghana',
+    'Curaçao',
+    'Haiti',
+    'New Zealand',
+    'Bosnia & Herzegovina',
+    'Sweden',
+    'Türkiye',
+    'Czechia',
+    'DR Congo',
+    'Iraq',
+  ],
 };
 
+/**
+ * Normalize a football position string to FWD | MID | DEF | GK
+ */
 export function normalizePosition(pos) {
   if (!pos) return 'MID';
   const p = pos.toUpperCase();
-  if (p === 'G' || p === 'GK' || p === 'GOALKEEPER') return 'GK';
-  if (p === 'D' || p === 'DEF' || p === 'DEFENDER') return 'DEF';
-  if (p === 'M' || p === 'MID' || p === 'MIDFIELDER') return 'MID';
-  if (p === 'F' || p === 'FWD' || p === 'FORWARD' || p === 'ATTACKER') return 'FWD';
+  if (p.includes('ATTACK') || p === 'F' || p === 'FW' || p === 'FWD' || p.includes('FORWARD') || p.includes('STRIKER') || p === 'ST' || p === 'CF' || p === 'LW' || p === 'RW') return 'FWD';
+  if (p.includes('MIDF') || p === 'M' || p === 'MF' || p === 'MID' || p === 'CM' || p === 'AM' || p === 'DM' || p === 'CAM' || p === 'CDM' || p === 'LM' || p === 'RM') return 'MID';
+  if (p.includes('DEFEND') || p === 'D' || p === 'DF' || p === 'DEF' || p === 'CB' || p === 'LB' || p === 'RB' || p === 'LWB' || p === 'RWB') return 'DEF';
+  if (p.includes('GOAL') || p === 'G' || p === 'GK') return 'GK';
   return 'MID';
 }

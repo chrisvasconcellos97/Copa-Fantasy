@@ -1,27 +1,47 @@
-import React from 'react';
+import React from 'react'
 
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
-  let cls = 'team-card';
-  if (selected) cls += ' team-card--selected';
-  if (taken) cls += ' team-card--taken';
-  if (disabled && !taken) cls += ' team-card--disabled';
+  const handleClick = () => {
+    if (!taken && !disabled && onClick) onClick(team)
+  }
+
+  const potClass = team.pot ? `pot-${team.pot}` : 'badge-navy'
 
   return (
-    <div className={cls} onClick={!disabled && !taken ? onClick : undefined} title={takenBy ? `Taken by ${takenBy}` : team.name}>
+    <div
+      className={`team-card${selected ? ' selected' : ''}${taken ? ' taken' : ''}${disabled && !taken ? ' disabled' : ''}`}
+      onClick={handleClick}
+      role="button"
+      tabIndex={taken || disabled ? -1 : 0}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+    >
       {team.logo_url ? (
-        <img src={team.logo_url} alt={team.name} onError={(e) => { e.target.style.display = 'none'; }} />
+        <img src={team.logo_url} alt={team.name} />
       ) : (
-        <div style={{ width: 44, height: 44, background: 'var(--navy-3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+        <div style={{ width: '2.5rem', height: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
           ⚽
         </div>
       )}
-      <span className="team-card__name">{team.name}</span>
+      <span className="team-name">{team.name}</span>
       {team.pot && (
-        <span className="badge badge-muted" style={{ fontSize: '0.6rem' }}>Pot {team.pot}</span>
+        <span className={`badge ${potClass}`} style={{ fontSize: '0.5625rem' }}>
+          Pot {team.pot}
+        </span>
       )}
       {taken && takenBy && (
-        <span className="team-card__taken-by">{takenBy}</span>
+        <span className="taken-by">picked by {takenBy}</span>
+      )}
+      {selected && (
+        <div style={{
+          position: 'absolute',
+          top: '0.25rem',
+          right: '0.25rem',
+          width: '0.75rem',
+          height: '0.75rem',
+          borderRadius: '50%',
+          background: 'var(--gold)',
+        }} />
       )}
     </div>
-  );
+  )
 }

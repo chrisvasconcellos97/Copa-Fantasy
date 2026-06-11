@@ -1,43 +1,73 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-export default function HostDashboard({ players = [], picks = [], currentPicker, onPoke, teams = [] }) {
-  const teamMap = Object.fromEntries(teams.map((t) => [t.api_id, t]));
+export default function HostDashboard({ players, picks, currentPicker, onPoke, teams }) {
+  const [poking, setPoking] = useState(false);
+
+  const totalPicks = players ? players.length * 8 : 0;
+  const progress = totalPicks > 0 ? Math.round((picks.length / totalPicks) * 100) : 0;
+
+  async function handlePoke() {
+    setPoking(true);
+    try {
+      await onPoke(currentPicker?.id);
+    } finally {
+      setPoking(false);
+    }
+  }
+
+  // Build pick count per player
+  const pickCounts = {};
+  if (picks) {
+    picks.forEach((p) => {
+      pickCounts[p.player_id] = (pickCounts[p.player_id] || 0) + 1;
+    });
+  }
 
   return (
-    <div className="host-dash">
-      <div className="section-title">Draft Progress ({picks.length} picks made)</div>
-      {players.map((player) => {
-        const myPicks = picks.filter((p) => p.player_id === player.id);
-        const isCurrent = currentPicker?.id === player.id;
+    <div className="host-dashboard">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-xs text-muted" style={{ marginBottom: 2 }}>Host Dashboard</div>
+          <div className="font-bold">Draft Progress</div>
+        </div>
+        <span className="badge badge-gold">{picks.length} / {totalPicks} picks</span>
+      </div>
 
-        return (
-          <div key={player.id} className={`host-dash__player${isCurrent ? ' host-dash__player--current' : ''}`}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                {player.name}
-                {isCurrent && <span className="badge badge-live" style={{ marginLeft: 8 }}>PICKING</span>}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: 4 }}>
-                {myPicks.length} team{myPicks.length !== 1 ? 's' : ''}
-                {myPicks.length > 0 && ': '}
-                {myPicks.map((p) => {
-                  const t = teamMap[p.team_api_id];
-                  return t ? t.name : p.team_api_id;
-                }).join(', ')}
-              </div>
-            </div>
-            {isCurrent && onPoke && (
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => onPoke(player)}
-                title="Poke this player"
-              >
-                👋 Poke
-              </button>
-            )}
+      {/* Progress bar */}
+      <div style={{ background: 'var(--navy)', borderRadius: 4, height: 6, marginBottom: 16 }}>
+        <div style={{ background: 'var(--gold)', borderRadius: 4, height: 6, width: `${progress}%`, transition: 'width .5s' }} />
+      </div>
+
+      {/* Current picker */}
+      {currentPicker && (
+        <div className="flex items-center gap-3" style={{ background: 'var(--navy)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div className="text-xs text-muted">Currently picking</div>
+            <div className="font-bold" style={{ color: 'var(--gold)' }}>{currentPicker.name}</div>
           </div>
-        );
-      })}
+          <button
+            className="btn btn-sm btn-secondary"
+            onClick={handlePoke}
+            disabled={poking}
+          >
+            {poking ? '…' : '👋 Poke'}
+          </button>
+        </div>
+      )}
+
+      {/* Per-player pick counts */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 6 }}>
+        {players && players.map((p) => (
+          <div key={p.id} style={{
+            background: 'var(--navy)', borderRadius: 6, padding: '6px 10px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            fontSize: '0.78rem', border: currentPicker?.id === p.id ? '1px solid var(--gold)' : '1px solid var(--line)',
+          }}>
+            <span className="truncate" style={{ maxWidth: 80 }}>{p.name}</span>
+            <span style={{ color: 'var(--gold)', fontWeight: 700 }}>{pickCounts[p.id] || 0}/8</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

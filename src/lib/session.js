@@ -1,13 +1,17 @@
-import { v4 as uuidv4 } from 'uuid';
+const TOKEN_KEY = 'copa_fantasy_token';
+const NAME_KEY = 'copa_fantasy_name';
+const GAME_KEY = 'copa_fantasy_game_id';
 
-const TOKEN_KEY = 'copa_session_token';
-const NAME_KEY = 'copa_player_name';
-const GAME_KEY = 'copa_game_id';
+function generateToken() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+}
 
 export function getOrCreateToken() {
   let token = localStorage.getItem(TOKEN_KEY);
   if (!token) {
-    token = uuidv4();
+    token = generateToken();
     localStorage.setItem(TOKEN_KEY, token);
   }
   return token;

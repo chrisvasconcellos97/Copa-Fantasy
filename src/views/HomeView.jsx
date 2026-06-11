@@ -1,69 +1,78 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { getOrCreateToken, setPlayerName, setGameId } from '../lib/session';
+import { getOrCreateToken, setPlayerName, getPlayerName, setGameId } from '../lib/session';
 
 function generateCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
 }
 
 export default function HomeView() {
   const navigate = useNavigate();
-  const [createName, setCreateName] = useState('');
-  const [joinName, setJoinName] = useState('');
+  const [name, setName] = useState(getPlayerName());
   const [joinCode, setJoinCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState('create'); // 'create' | 'join'
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    if (!createName.trim()) return;
-    setLoading(true);
+  const token = getOrCreateToken();
+
+  async function handleCreate() {
+    if (!name.trim()) { setError('Enter your name first'); return; }
     setError('');
+    setLoading(true);
     try {
-      const token = getOrCreateToken();
+      setPlayerName(name.trim());
       const code = generateCode();
-      const { data: game, error: gameErr } = await supabase.from('games').insert({
-        join_code: code,
-        status: 'lobby',
-        host_token: token,
-        current_pick_number: 0,
-      }).select().single();
+
+      const { data: game, error: gameErr } = await supabase
+        .from('games')
+        .insert({ code, status: 'lobby', host_token: token })
+        .select()
+        .single();
+
       if (gameErr) throw gameErr;
 
-      const { error: playerErr } = await supabase.from('game_players').insert({
-        game_id: game.id,
-        player_token: token,
-        player_name: createName.trim(),
-        is_host: true,
-      });
+      const { error: playerErr } = await supabase
+        .from('game_players')
+        .insert({
+          game_id: game.id,
+          player_token: token,
+          name: name.trim(),
+          is_host: true,
+        });
+
       if (playerErr) throw playerErr;
 
-      setPlayerName(createName.trim());
       setGameId(game.id);
       navigate(`/lobby/${game.id}`);
-    } catch (err) {
-      setError(err.message || 'Failed to create game');
+    } catch (e) {
+      setError(e.message || 'Failed to create game');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleJoin = async (e) => {
-    e.preventDefault();
-    if (!joinName.trim() || !joinCode.trim()) return;
-    setLoading(true);
+  async function handleJoin() {
+    if (!name.trim()) { setError('Enter your name first'); return; }
+    if (!joinCode.trim()) { setError('Enter a game code'); return; }
     setError('');
+    setLoading(true);
     try {
-      const token = getOrCreateToken();
-      const { data: game, error: findErr } = await supabase
+      setPlayerName(name.trim());
+      const { data: game, error: gameErr } = await supabase
         .from('games')
         .select('*')
-        .eq('join_code', joinCode.trim().toUpperCase())
+        .eq('code', joinCode.trim().toUpperCase())
         .single();
-      if (findErr || !game) throw new Error('Game not found. Check the code and try again.');
 
-      // Check if already joined
+      if (gameErr || !game) throw new Error('Game not found');
+      if (game.status !== 'lobby') throw new Error('Game already started');
+
+      // Check if already in game
       const { data: existing } = await supabase
         .from('game_players')
         .select('id')
@@ -72,117 +81,117 @@ export default function HomeView() {
         .maybeSingle();
 
       if (!existing) {
-        const { error: playerErr } = await supabase.from('game_players').insert({
-          game_id: game.id,
-          player_token: token,
-          player_name: joinName.trim(),
-          is_host: false,
-        });
+        const { error: playerErr } = await supabase
+          .from('game_players')
+          .insert({
+            game_id: game.id,
+            player_token: token,
+            name: name.trim(),
+            is_host: false,
+          });
         if (playerErr) throw playerErr;
       }
 
-      setPlayerName(joinName.trim());
       setGameId(game.id);
       navigate(`/lobby/${game.id}`);
-    } catch (err) {
-      setError(err.message || 'Failed to join game');
+    } catch (e) {
+      setError(e.message || 'Failed to join game');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="page" style={{ maxWidth: 600 }}>
-      <div className="text-center mb-6" style={{ paddingTop: 32 }}>
-        <div style={{ fontSize: '4rem', marginBottom: 12 }}>⚽</div>
-        <h1 className="h1 text-gold mb-2">Copa Fantasy 2026</h1>
-        <p className="text-muted">Draft teams, pick players, compete with friends through the World Cup.</p>
-      </div>
-
-      {error && (
-        <div style={{ background: 'rgba(217,83,79,0.15)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', marginBottom: 16, color: 'var(--danger)', fontSize: '0.9rem' }}>
-          {error}
-        </div>
-      )}
-
-      <div className="grid-2" style={{ gap: 16 }}>
-        <div className="card">
-          <h2 className="h3 mb-3">🎮 Create Game</h2>
-          <p className="text-muted text-sm mb-4">Start a new league and invite friends with a code.</p>
-          <form onSubmit={handleCreate}>
-            <div className="form-group">
-              <label className="label">Your Name</label>
-              <input
-                className="input"
-                type="text"
-                placeholder="e.g. Chris"
-                value={createName}
-                onChange={e => setCreateName(e.target.value)}
-                maxLength={30}
-                required
-              />
-            </div>
-            <button className="btn btn-gold btn-full" type="submit" disabled={loading || !createName.trim()}>
-              {loading ? 'Creating…' : 'Create Game'}
-            </button>
-          </form>
+    <div className="page-center">
+      <div style={{ width: '100%', maxWidth: 440 }}>
+        <div className="text-center mb-6">
+          <h1 style={{ color: 'var(--gold-soft)', fontSize: 36 }}>⚽ Copa Fantasy</h1>
+          <p className="text-muted mt-2">World Cup 2026 Fantasy Draft</p>
         </div>
 
         <div className="card">
-          <h2 className="h3 mb-3">🔑 Join Game</h2>
-          <p className="text-muted text-sm mb-4">Enter a code shared by the host to join their league.</p>
-          <form onSubmit={handleJoin}>
-            <div className="form-group">
-              <label className="label">Your Name</label>
-              <input
-                className="input"
-                type="text"
-                placeholder="e.g. Alex"
-                value={joinName}
-                onChange={e => setJoinName(e.target.value)}
-                maxLength={30}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label className="label">Game Code</label>
-              <input
-                className="input"
-                type="text"
-                placeholder="e.g. ABC123"
-                value={joinCode}
-                onChange={e => setJoinCode(e.target.value.toUpperCase())}
-                maxLength={8}
-                style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700 }}
-                required
-              />
-            </div>
-            <button className="btn btn-gold btn-full" type="submit" disabled={loading || !joinName.trim() || !joinCode.trim()}>
-              {loading ? 'Joining…' : 'Join Game'}
-            </button>
-          </form>
-        </div>
-      </div>
+          <div className="flex mb-4" style={{ gap: 0 }}>
+            {['create', 'join'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  background: tab === t ? 'var(--gold)' : 'var(--navy-3)',
+                  color: tab === t ? 'var(--navy)' : 'var(--muted)',
+                  border: 'none',
+                  fontFamily: 'inherit',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  borderRadius: t === 'create' ? 'var(--radius-sm) 0 0 var(--radius-sm)' : '0 var(--radius-sm) var(--radius-sm) 0',
+                  transition: 'all 0.18s',
+                }}
+              >
+                {t === 'create' ? '+ Create Game' : '→ Join Game'}
+              </button>
+            ))}
+          </div>
 
-      <div className="card mt-4" style={{ textAlign: 'center' }}>
-        <h3 className="h3 mb-2">How It Works</h3>
-        <div className="grid-3 mt-3" style={{ textAlign: 'left', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🏟️</div>
-            <div className="font-bold text-sm mb-1">Snake Draft</div>
-            <div className="text-muted text-xs">Take turns picking 2 teams from each pot in snake order.</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>⚽</div>
-            <div className="font-bold text-sm mb-1">Pick Players</div>
-            <div className="text-muted text-xs">Select players from your drafted teams to earn bonus points.</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🏆</div>
-            <div className="font-bold text-sm mb-1">Score Points</div>
-            <div className="text-muted text-xs">Teams earn points per win, draw, and each knockout round won.</div>
+          <div className="flex flex-col gap-3">
+            <div className="form-group">
+              <label className="form-label">Your Name</label>
+              <input
+                className="input"
+                placeholder="Enter your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (tab === 'create' ? handleCreate() : handleJoin())}
+                maxLength={30}
+              />
+            </div>
+
+            {tab === 'join' && (
+              <div className="form-group">
+                <label className="form-label">Game Code</label>
+                <input
+                  className="input"
+                  placeholder="e.g. ABC123"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                  maxLength={6}
+                  style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: 20, fontWeight: 700 }}
+                />
+              </div>
+            )}
+
+            {error && (
+              <div style={{
+                background: 'rgba(217,83,79,0.15)',
+                border: '1px solid var(--danger)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '10px 14px',
+                color: '#e87474',
+                fontSize: 13,
+              }}>
+                {error}
+              </div>
+            )}
+
+            <button
+              className="btn btn-primary btn-lg btn-full"
+              onClick={tab === 'create' ? handleCreate : handleJoin}
+              disabled={loading}
+            >
+              {loading ? (
+                <><span className="spinner spinner-sm" /> {tab === 'create' ? 'Creating...' : 'Joining...'}</>
+              ) : (
+                tab === 'create' ? 'Create Game' : 'Join Game'
+              )}
+            </button>
           </div>
         </div>
+
+        <p className="text-center text-xs text-muted mt-4">
+          Copa Fantasy 2026 · Draft your World Cup squad
+        </p>
       </div>
     </div>
   );

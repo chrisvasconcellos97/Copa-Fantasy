@@ -1,50 +1,41 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 export function useScores(gameId) {
-  const [scores, setScores] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [scores, setScores] = useState([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!gameId) { setLoading(false); return; }
+    if (!gameId) { setLoading(false); return }
 
-    let mounted = true;
-
-    async function load() {
-      const { data, error } = await supabase
-        .from('user_scores')
-        .select('*')
-        .eq('game_id', gameId)
-        .order('total_points', { ascending: false });
-      if (mounted) {
-        if (!error) setScores(data || []);
-        setLoading(false);
-      }
-    }
-
-    load();
+    supabase
+      .from('user_scores')
+      .select('*')
+      .eq('game_id', gameId)
+      .order('total_points', { ascending: false })
+      .then(({ data }) => {
+        setScores(data || [])
+        setLoading(false)
+      })
 
     const channel = supabase
-      .channel(`user_scores:${gameId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'user_scores',
-        filter: `game_id=eq.${gameId}`,
-      }, () => load())
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'user_scores',
-        filter: `game_id=eq.${gameId}`,
-      }, () => load())
-      .subscribe();
+      .channel('user_scores:' + gameId)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'user_scores', filter: 'game_id=eq.' + gameId },
+        () => {
+          supabase
+            .from('user_scores')
+            .select('*')
+            .eq('game_id', gameId)
+            .order('total_points', { ascending: false })
+            .then(({ data }) => setScores(data || []))
+        }
+      )
+      .subscribe()
 
-    return () => {
-      mounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, [gameId]);
+    return () => { supabase.removeChannel(channel) }
+  }, [gameId])
 
-  return { scores, loading };
+  return { scores, loading }
 }
