@@ -1,28 +1,14 @@
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
-  const cls = [
-    'team-card',
-    selected ? 'selected' : '',
-    taken ? 'taken' : '',
-    disabled ? 'disabled' : '',
-  ].filter(Boolean).join(' ');
-
+  const cls = ['team-card', selected ? 'selected' : '', taken ? 'taken' : '', disabled ? 'disabled' : ''].filter(Boolean).join(' ');
   return (
-    <div className={cls} onClick={!disabled && !taken ? onClick : undefined} role="button" tabIndex={0}
-      onKeyDown={e => e.key === 'Enter' && !disabled && !taken && onClick && onClick()}>
-      <div className="team-card-logo">
-        {team.logo_url ? (
-          <img src={team.logo_url} alt={team.name} width={48} height={48} />
-        ) : (
-          <div className="team-logo-fallback">{team.name?.slice(0,2).toUpperCase()}</div>
-        )}
-      </div>
-      <div className="team-card-name">{team.name}</div>
-      <div className="team-card-pot text-muted text-sm">Pot {team.pot}</div>
-      {taken && (
-        <div className="team-taken-overlay">
-          <span className="text-sm">{takenBy}</span>
-        </div>
-      )}
+    <div className={cls} onClick={!taken && !disabled ? onClick : undefined}>
+      {team.logo_url
+        ? <img src={team.logo_url} alt={team.name} />
+        : <div style={{ width:48, height:48, background:'var(--navy-3)', borderRadius:6, display:'flex',alignItems:'center',justifyContent:'center', fontSize:'1.2rem' }}>⚽</div>
+      }
+      <div className="team-name">{team.name}</div>
+      <span className={`badge badge-pot${team.pot || 1}`}>Pot {team.pot || '?'}</span>
+      {taken && takenBy && <div className="taken-by">→ {takenBy}</div>}
     </div>
   );
 }

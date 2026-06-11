@@ -7,21 +7,36 @@ export function useGame(gameId) {
 
   useEffect(() => {
     if (!gameId) return;
-    let sub;
 
-    async function load() {
-      const { data } = await supabase.from('games').select('*').eq('id', gameId).single();
-      setGame(data);
+    let channel;
+
+    async function loadGame() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', gameId)
+        .single();
+      if (!error && data) setGame(data);
       setLoading(false);
     }
-    load();
 
-    sub = supabase.channel('game-' + gameId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: 'id=eq.' + gameId },
-        (p) => setGame(p.new))
+    loadGame();
+
+    channel = supabase
+      .channel(`game-${gameId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
+        (payload) => {
+          setGame(payload.new);
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(sub); };
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, [gameId]);
 
   return { game, loading };

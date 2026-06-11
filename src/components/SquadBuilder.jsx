@@ -1,52 +1,43 @@
-export default function SquadBuilder({ picks, teams }) {
-  const teamPicks = picks.filter(p => p.pick_type === 'team');
-  const playerPicks = picks.filter(p => p.pick_type === 'player');
-  const totalPlayerSlots = 24;
-  const filledPlayerSlots = playerPicks.length;
+export default function SquadBuilder({ picks, teams, playerPicks, players }) {
+  const teamMap = Object.fromEntries((teams || []).map(t => [t.api_id, t]));
+  const playerMap = Object.fromEntries((players || []).map(p => [p.api_id, p]));
+  const ppByDraftPick = {};
+  (playerPicks || []).forEach(pp => {
+    if (!ppByDraftPick[pp.draft_pick_id]) ppByDraftPick[pp.draft_pick_id] = [];
+    ppByDraftPick[pp.draft_pick_id].push(pp);
+  });
 
   return (
     <div className="squad-builder">
-      <div className="progress-bar-wrap mb-2">
-        <div className="flex" style={{justifyContent:'space-between', marginBottom:'4px'}}>
-          <span className="text-sm text-muted">Players selected</span>
-          <span className="text-sm text-gold">{filledPlayerSlots} / {totalPlayerSlots}</span>
-        </div>
-        <div className="progress-bar-bg">
-          <div className="progress-bar-fill" style={{ width: `${(filledPlayerSlots / totalPlayerSlots) * 100}%` }} />
-        </div>
-      </div>
-      <div className="squad-teams-grid">
-        {Array.from({length:8}, (_, i) => {
-          const tp = teamPicks[i];
-          const team = tp ? teams.find(t => t.api_id === tp.team_api_id) : null;
-          const tPlayers = tp ? playerPicks.filter(p => p.team_api_id === tp.team_api_id) : [];
-          return (
-            <div key={i} className="squad-team-slot card">
-              <div className="squad-team-header">
-                {team ? (
-                  <>
-                    {team.logo_url && <img src={team.logo_url} alt={team.name} width={24} height={24} />}
-                    <span className="text-sm font-bold">{team.name}</span>
-                  </>
-                ) : (
-                  <span className="text-muted text-sm">Team {i+1}</span>
-                )}
-              </div>
-              <div className="squad-player-slots">
-                {Array.from({length:3}, (_, j) => {
-                  const pp = tPlayers[j];
-                  return (
-                    <div key={j} className={`squad-player-slot ${pp ? 'filled' : 'empty'}`}>
-                      {pp ? <span className="text-sm">{pp.player_name || pp.player_api_id}</span>
-                           : <span className="text-muted text-sm">Player {j+1}</span>}
-                    </div>
-                  );
-                })}
-              </div>
+      {(picks || []).map(pick => {
+        const team = teamMap[pick.team_api_id];
+        const slots = ppByDraftPick[pick.id] || [];
+        const positions = ['FWD', 'MID', 'DEF'];
+        return (
+          <div key={pick.id} className="squad-team-block">
+            <div className="squad-team-header">
+              {team?.logo_url && <img src={team.logo_url} alt={team.name} />}
+              <span>{team?.name || pick.team_api_id}</span>
+              <span className={`badge badge-pot${pick.pot || 1}`}>Pot {pick.pot}</span>
             </div>
-          );
-        })}
-      </div>
+            <div className="squad-slots">
+              {positions.map(pos => {
+                const pp = slots.find(s => s.position === pos);
+                const pl = pp ? playerMap[pp.player_api_id] : null;
+                return (
+                  <div key={pos} className={`squad-slot${pp ? ' filled' : ''}`}>
+                    <div className="slot-pos">{pos}</div>
+                    {pl
+                      ? <div className="slot-name">{pl.name.split(' ').slice(-1)[0]}</div>
+                      : <div style={{ color:'var(--muted)', fontSize:'0.65rem' }}>Empty</div>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
