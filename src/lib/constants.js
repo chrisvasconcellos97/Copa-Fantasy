@@ -28,7 +28,7 @@ export const RESULT_TYPES = [
   { value: 'qf_win', label: 'Quarter-Final Win (+8)' },
   { value: 'sf_win', label: 'Semi-Final Win (+13)' },
   { value: 'final_win', label: 'Final Win (+21)' },
-  { value: 'champion', label: 'Champion (+34)' },
+  { value: 'champion', label: 'Champions (+34)' },
 ];
 
 export const BONUS_TYPES = [
@@ -61,8 +61,8 @@ export function normalizePosition(pos) {
   if (!pos) return 'MID';
   const p = pos.toUpperCase();
   if (p === 'G' || p === 'GK' || p === 'GOALKEEPER') return 'GK';
-  if (p === 'D' || p === 'DEF' || p === 'DEFENDER') return 'DEF';
-  if (p === 'M' || p === 'MID' || p === 'MIDFIELDER') return 'MID';
-  if (p === 'F' || p === 'FWD' || p === 'FORWARD' || p === 'ATTACKER') return 'FWD';
-  return p.slice(0, 3);
+  if (p === 'D' || p === 'DEF' || p === 'DEFENDER' || p === 'CB' || p === 'LB' || p === 'RB' || p === 'WB') return 'DEF';
+  if (p === 'M' || p === 'MID' || p === 'MIDFIELDER' || p === 'CM' || p === 'DM' || p === 'AM') return 'MID';
+  if (p === 'F' || p === 'FWD' || p === 'FORWARD' || p === 'ST' || p === 'CF' || p === 'LW' || p === 'RW') return 'FWD';
+  return 'MID';
 }

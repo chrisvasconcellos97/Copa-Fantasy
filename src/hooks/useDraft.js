@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.js';
 
 export function useDraft(gameId) {
   const [picks, setPicks] = useState([]);
@@ -10,7 +10,7 @@ export function useDraft(gameId) {
 
     let mounted = true;
 
-    async function load() {
+    async function fetchPicks() {
       const { data, error } = await supabase
         .from('draft_picks')
         .select('*')
@@ -22,7 +22,7 @@ export function useDraft(gameId) {
       }
     }
 
-    load();
+    fetchPicks();
 
     const channel = supabase
       .channel(`draft-picks-${gameId}`)
@@ -31,8 +31,8 @@ export function useDraft(gameId) {
         { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `game_id=eq.${gameId}` },
         (payload) => {
           if (mounted) {
-            setPicks((prev) => {
-              const exists = prev.find((p) => p.id === payload.new.id);
+            setPicks(prev => {
+              const exists = prev.some(p => p.id === payload.new.id);
               if (exists) return prev;
               return [...prev, payload.new].sort((a, b) => a.pick_number - b.pick_number);
             });
