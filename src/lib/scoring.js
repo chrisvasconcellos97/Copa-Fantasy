@@ -3,7 +3,6 @@ export const TEAM_POINTS = {
   group_draw: 1,
   group_loss: 0,
   r32_win: 5,
-  r16_win: 8,
   qf_win: 8,
   sf_win: 13,
   final_win: 21,
@@ -23,31 +22,32 @@ export const PLAYER_POINTS = {
 };
 
 /**
- * Computes total points for a player from their match events.
- * events: array of match_events rows { type, detail }
+ * Computes a player's score from an array of match_events.
+ * Each event should have: { type, detail }
+ * Returns total points number.
  */
 export function computePlayerScore(events) {
   if (!events || events.length === 0) return 0;
   let total = 0;
-  for (const ev of events) {
-    const t = (ev.type || '').toLowerCase();
-    const d = (ev.detail || '').toLowerCase();
-    if (t === 'goal') {
-      // Exclude own goals
-      if (!d.includes('own')) total += PLAYER_POINTS.goal;
-    } else if (t === 'assist') {
+  for (const event of events) {
+    const type = (event.type || '').toLowerCase();
+    const detail = (event.detail || '').toLowerCase();
+    if (type === 'goal' && detail !== 'own goal') {
+      total += PLAYER_POINTS.goal;
+    } else if (type === 'assist') {
       total += PLAYER_POINTS.assist;
-    } else if (t === 'card') {
-      if (d.includes('yellow')) total += PLAYER_POINTS.yellow_card;
-      else if (d.includes('red')) total += PLAYER_POINTS.red_card;
-    } else if (t === 'clean_sheet') {
-      if (d === 'gk') total += PLAYER_POINTS.clean_sheet_gk;
+    } else if (type === 'yellow_card' || (type === 'card' && detail === 'yellow card')) {
+      total += PLAYER_POINTS.yellow_card;
+    } else if (type === 'red_card' || (type === 'card' && (detail === 'red card' || detail === 'second yellow'))) {
+      total += PLAYER_POINTS.red_card;
+    } else if (type === 'clean_sheet') {
+      if (detail === 'gk') total += PLAYER_POINTS.clean_sheet_gk;
       else total += PLAYER_POINTS.clean_sheet_def;
-    } else if (t === 'motm') {
+    } else if (type === 'motm') {
       total += PLAYER_POINTS.motm;
-    } else if (t === 'top_scorer') {
+    } else if (type === 'top_scorer') {
       total += PLAYER_POINTS.top_scorer;
-    } else if (t === 'golden_boot') {
+    } else if (type === 'golden_boot') {
       total += PLAYER_POINTS.golden_boot;
     }
   }

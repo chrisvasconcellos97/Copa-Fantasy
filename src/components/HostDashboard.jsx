@@ -2,66 +2,41 @@ import React from 'react';
 
 export default function HostDashboard({ players, picks, currentPickerIndex, onPoke, teams }) {
   const teamMap = {};
-  if (teams) teams.forEach(t => { teamMap[t.api_id] = t; });
+  if (teams) teams.forEach((t) => { teamMap[t.api_id] = t; });
 
   return (
-    <div style={{
-      background: 'var(--card-bg)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: 16,
-      marginBottom: 16,
-    }}>
-      <div className="section-title">Host Dashboard</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {players.map((player, idx) => {
-          const playerPicks = picks.filter(p => p.game_player_id === player.id);
-          const isCurrent = idx === currentPickerIndex;
-          return (
-            <div
-              key={player.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 12px',
-                background: isCurrent ? 'rgba(255,215,0,0.07)' : '#0d0d14',
-                border: `1px solid ${isCurrent ? 'var(--gold)' : 'var(--border)'}`,
-                borderRadius: 8,
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: isCurrent ? 'var(--gold)' : 'var(--text)' }}>
-                  {player.player_name || player.name}
-                  {isCurrent && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--gold)' }}>● Picking</span>}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {playerPicks.length} team{playerPicks.length !== 1 ? 's' : ''} picked
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {playerPicks.slice(0, 4).map(pick => {
-                  const team = teamMap[pick.team_api_id];
-                  return team?.logo_url ? (
-                    <img key={pick.id} src={team.logo_url} alt={team.name} title={team.name} style={{ width: 20, height: 20, objectFit: 'contain' }} />
-                  ) : (
-                    <span key={pick.id} style={{ fontSize: 12 }}>⚽</span>
-                  );
-                })}
-              </div>
-              {isCurrent && onPoke && (
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => onPoke(player)}
-                  style={{ fontSize: 11 }}
-                >
-                  👈 Poke
-                </button>
-              )}
-            </div>
-          );
-        })}
+    <div className="host-dashboard">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>
+          Host Controls
+        </span>
+        <span className="badge badge-gold" style={{ fontSize: '0.65rem' }}>HOST</span>
       </div>
+      {players.map((player, idx) => {
+        const playerPicks = picks.filter((pk) => pk.game_player_id === player.id);
+        const isCurrentPicker = idx === currentPickerIndex;
+        return (
+          <div key={player.id} className="host-player-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+              {isCurrentPicker && <span style={{ color: 'var(--gold)', fontSize: '0.9rem' }}>⏳</span>}
+              <span style={{ fontWeight: isCurrentPicker ? 700 : 400, color: isCurrentPicker ? 'var(--gold)' : 'var(--text)', fontSize: '0.88rem' }}>
+                {player.player_name}
+              </span>
+              {player.is_host && <span className="badge badge-gold" style={{ fontSize: '0.6rem' }}>HOST</span>}
+            </div>
+            <span className="text-muted text-sm">{playerPicks.length}/8 teams</span>
+            {isCurrentPicker && onPoke && (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => onPoke(player)}
+                style={{ fontSize: '0.75rem' }}
+              >
+                👋 Poke
+              </button>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

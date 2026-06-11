@@ -1,65 +1,72 @@
 import React from 'react';
 
-function TeamSide({ teamApiId, score, teams, isMyTeam }) {
-  const team = teams?.find(t => t.api_id === teamApiId);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
-      {team?.logo_url ? (
-        <img src={team.logo_url} alt={team?.name} style={{ width: 36, height: 36, objectFit: 'contain' }} />
-      ) : (
-        <div style={{ width: 36, height: 36, background: 'var(--border)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚽</div>
-      )}
-      <span style={{ fontSize: 11, fontWeight: 600, textAlign: 'center', color: isMyTeam ? 'var(--gold)' : 'var(--text)', lineHeight: 1.3 }}>
-        {team?.name || '—'}
-      </span>
-      <span style={{ fontSize: 22, fontWeight: 800, color: isMyTeam ? 'var(--gold)' : 'var(--text)' }}>
-        {score ?? '—'}
-      </span>
-    </div>
-  );
+function formatKickoff(kickoffAt) {
+  if (!kickoffAt) return '';
+  const d = new Date(kickoffAt);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function FixtureCard({ fixture, myTeamApiIds = [], isLive, teams = [] }) {
-  const homeIsMyTeam = myTeamApiIds.includes(fixture?.home_team_api_id);
-  const awayIsMyTeam = myTeamApiIds.includes(fixture?.away_team_api_id);
-  const isHighlighted = homeIsMyTeam || awayIsMyTeam;
-  const kickoffDate = fixture?.kickoff_at ? new Date(fixture.kickoff_at) : null;
+export default function FixtureCard({ fixture, myTeamApiIds = [], isLive }) {
+  const homeId = String(fixture.home_team_api_id);
+  const awayId = String(fixture.away_team_api_id);
+  const isMine = myTeamApiIds.map(String).includes(homeId) || myTeamApiIds.map(String).includes(awayId);
+
+  const cls = [
+    'fixture-card',
+    isLive ? 'fixture-card--live' : '',
+    isMine && !isLive ? 'fixture-card--mine' : '',
+  ].filter(Boolean).join(' ');
+
+  const status = fixture.status || fixture.status_short || '';
+  const isFinished = ['FT', 'AET', 'PEN'].includes(status);
+  const isScheduled = ['NS', 'TBD', ''].includes(status);
+  const hasScore = fixture.home_score != null && fixture.away_score != null;
 
   return (
-    <div style={{
-      background: 'var(--card-bg)',
-      border: `1px solid ${isHighlighted ? 'var(--gold)' : 'var(--border)'}`,
-      borderRadius: 'var(--radius)',
-      padding: '14px 16px',
-      boxShadow: isHighlighted ? 'var(--shadow-gold)' : 'none',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <TeamSide
-          teamApiId={fixture?.home_team_api_id}
-          score={fixture?.home_score}
-          teams={teams}
-          isMyTeam={homeIsMyTeam}
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 60 }}>
-          {isLive ? (
-            <span className="badge badge-live" style={{ fontSize: 10, marginBottom: 2 }}>LIVE</span>
-          ) : (
-            fixture?.status === 'FT' ? (
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 700 }}>FT</span>
-            ) : (
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {kickoffDate ? kickoffDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}
-              </span>
-            )
-          )}
-          <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 700 }}>vs</span>
+    <div className={cls}>
+      {isMine && (
+        <div style={{ fontSize: '0.7rem', color: 'var(--gold)', fontWeight: 700, marginBottom: 8 }}>
+          ⭐ Your team is playing
         </div>
-        <TeamSide
-          teamApiId={fixture?.away_team_api_id}
-          score={fixture?.away_score}
-          teams={teams}
-          isMyTeam={awayIsMyTeam}
-        />
+      )}
+      <div className="fixture-card__teams">
+        <div className="fixture-card__team">
+          {fixture.home_logo_url ? (
+            <img className="fixture-card__team-logo" src={fixture.home_logo_url} alt={fixture.home_name || ''} loading="lazy" />
+          ) : (
+            <div className="fixture-card__team-logo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>⚽</div>
+          )}
+          <span className="fixture-card__team-name">{fixture.home_name || homeId}</span>
+        </div>
+        <div className="fixture-card__score">
+          {hasScore ? (
+            <span className="fixture-card__score-line">
+              {fixture.home_score} – {fixture.away_score}
+            </span>
+          ) : (
+            <span className="fixture-card__score-line" style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>
+              {formatKickoff(fixture.kickoff_at)}
+            </span>
+          )}
+          <span className={`fixture-card__status${isLive ? ' fixture-card__status--live' : ''}`}>
+            {isLive && <span className="live-dot" />}
+            {isLive
+              ? `${fixture.elapsed || 0}'`
+              : isFinished
+              ? 'FT'
+              : isScheduled
+              ? (fixture.round || 'Upcoming')
+              : status}
+          </span>
+        </div>
+        <div className="fixture-card__team">
+          {fixture.away_logo_url ? (
+            <img className="fixture-card__team-logo" src={fixture.away_logo_url} alt={fixture.away_name || ''} loading="lazy" />
+          ) : (
+            <div className="fixture-card__team-logo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem' }}>⚽</div>
+          )}
+          <span className="fixture-card__team-name">{fixture.away_name || awayId}</span>
+        </div>
       </div>
     </div>
   );

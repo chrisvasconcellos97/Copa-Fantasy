@@ -1,12 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://hmasaapwbhxueuhxxqkd.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtYXNhYXB3Ymh4dWV1aHh4cWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTI1OTgsImV4cCI6MjA5NjM4ODU5OH0.pAdFowezL_l7QLLA0Y4KgyGAcDbYtx0OppA_id1agdY';
-const API_FOOTBALL_KEY = '1e60025d01a19a0d02428500673187e4';
-const LEAGUE_ID = 1;
-const SEASON = 2026;
+const WC_SEASON = process.env.WC_SEASON || '2026';
+const API_KEY = process.env.API_FOOTBALL_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hmasaapwbhxueuhxxqkd.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (!API_KEY) {
+  console.error('ERROR: API_FOOTBALL_KEY env var is required');
+  process.exit(1);
+}
+if (!SUPABASE_SERVICE_KEY) {
+  console.error('ERROR: SUPABASE_SERVICE_ROLE_KEY env var is required');
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+const API_BASE = 'https://v3.football.api-sports.io';
+const LEAGUE_ID = 1; // World Cup
 
 const FALLBACK_POTS = {
   1: ['Mexico', 'Canada', 'USA', 'Argentina', 'Brazil', 'France', 'England', 'Germany', 'Portugal', 'Netherlands', 'Spain', 'Belgium'],
@@ -15,144 +26,122 @@ const FALLBACK_POTS = {
   4: ['Jordan', 'Cape Verde', 'Ghana', 'Curaçao', 'Haiti', 'New Zealand', 'Bosnia & Herzegovina', 'Sweden', 'Türkiye', 'Czechia', 'DR Congo', 'Iraq'],
 };
 
-function getPot(teamName) {
+function getPotForTeam(name) {
   for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
-    if (names.some((n) => n.toLowerCase() === teamName.toLowerCase())) {
-      return Number(pot);
-    }
+    const norm = n => n.toLowerCase().replace(/[^a-z]/g, '');
+    if (names.some(n => norm(n) === norm(name))) return parseInt(pot);
   }
   return null;
 }
 
-function normalizePosition(pos) {
-  if (!pos) return 'FWD';
-  const p = pos.toUpperCase();
-  if (p === 'GOALKEEPER' || p === 'GK' || p === 'G') return 'GK';
-  if (p === 'DEFENDER' || p === 'DEF' || p === 'D') return 'DEF';
-  if (p === 'MIDFIELDER' || p === 'MID' || p === 'M') return 'MID';
-  if (p === 'ATTACKER' || p === 'FORWARD' || p === 'FWD' || p === 'F' || p === 'ATT') return 'FWD';
-  return 'FWD';
-}
-
-async function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-async function fetchApi(path) {
-  const url = `https://v3.football.api-sports.io${path}`;
-  console.log(`GET ${url}`);
-  const res = await fetch(url, {
-    headers: {
-      'x-apisports-key': API_FOOTBALL_KEY,
-    },
+async function apiFetch(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'x-apisports-key': API_KEY },
   });
-  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
-  const json = await res.json();
-  if (json.errors && Object.keys(json.errors).length > 0) {
-    throw new Error(`API errors: ${JSON.stringify(json.errors)}`);
-  }
-  return json.response || [];
+  if (!res.ok) throw new Error(`API error ${res.status} for ${path}`);
+  return res.json();
 }
 
-async function backfillTeams() {
-  console.log('\n=== Backfilling Teams ===');
-  const data = await fetchApi(`/teams?league=${LEAGUE_ID}&season=${SEASON}`);
-  await sleep(1000);
-
-  let count = 0;
-  for (const item of data) {
-    const t = item.team;
-    const pot = getPot(t.name);
-    const { error } = await supabase.from('teams').upsert({
-      api_id: t.id,
-      name: t.name,
-      code: t.code || t.name.substring(0, 3).toUpperCase(),
-      logo_url: t.logo,
-      pot,
-      eliminated: false,
-    }, { onConflict: 'api_id' });
-    if (error) console.error(`Team upsert error for ${t.name}:`, error.message);
-    else count++;
-  }
-  console.log(`Upserted ${count} teams`);
-}
-
-async function backfillPlayers() {
-  console.log('\n=== Backfilling Players ===');
-  let page = 1;
-  let totalCount = 0;
-
-  while (true) {
-    const data = await fetchApi(`/players?league=${LEAGUE_ID}&season=${SEASON}&page=${page}`);
-    await sleep(1000);
-    if (!data || data.length === 0) break;
-
-    for (const item of data) {
-      const p = item.player;
-      const stats = item.statistics?.[0] || {};
-      const pos = normalizePosition(stats.games?.position || p.position);
-      const { error } = await supabase.from('players').upsert({
-        api_id: p.id,
-        team_api_id: stats.team?.id || null,
-        name: p.name,
-        number: stats.games?.number || null,
-        position: pos,
-        photo_url: p.photo,
-      }, { onConflict: 'api_id' });
-      if (error) console.error(`Player upsert error for ${p.name}:`, error.message);
-      else totalCount++;
-    }
-
-    console.log(`Page ${page}: processed ${data.length} players`);
-    page++;
-
-    // Most APIs have a paging limit; stop at 20 pages to be safe
-    if (page > 20) break;
-  }
-  console.log(`Total players upserted: ${totalCount}`);
-}
-
-async function backfillFixtures() {
-  console.log('\n=== Backfilling Fixtures ===');
-  const data = await fetchApi(`/fixtures?league=${LEAGUE_ID}&season=${SEASON}`);
-  await sleep(1000);
-
-  let count = 0;
-  for (const f of data) {
-    const { error } = await supabase.from('fixtures').upsert({
-      api_id: f.fixture.id,
-      round: f.league.round,
-      status_short: f.fixture.status.short,
-      status_long: f.fixture.status.long,
-      elapsed: f.fixture.status.elapsed,
-      kickoff: f.fixture.date,
-      home_team_api_id: f.teams.home.id,
-      away_team_api_id: f.teams.away.id,
-      home_goals: f.goals.home,
-      away_goals: f.goals.away,
-      winner_api_id: f.teams.home.winner ? f.teams.home.id : f.teams.away.winner ? f.teams.away.id : null,
-      synced_final: ['FT', 'AET', 'PEN'].includes(f.fixture.status.short),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'api_id' });
-    if (error) console.error(`Fixture upsert error:`, error.message);
-    else count++;
-  }
-  console.log(`Upserted ${count} fixtures`);
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function main() {
-  console.log(`Copa Fantasy 2026 Backfill Script`);
-  console.log(`League: ${LEAGUE_ID}, Season: ${SEASON}`);
+  console.log('--- Copa Fantasy Backfill Script ---');
+  console.log(`Season: ${WC_SEASON}`);
 
+  // 1. Check API status
+  console.log('\n[1] Checking API status...');
   try {
-    await backfillTeams();
-    await backfillPlayers();
-    await backfillFixtures();
-    console.log('\n✅ Backfill complete!');
+    const status = await apiFetch('/status');
+    const remaining = status?.response?.requests?.remaining;
+    const limit = status?.response?.requests?.limit_day;
+    console.log(`    Remaining API calls: ${remaining} / ${limit}`);
   } catch (err) {
-    console.error('\n❌ Backfill failed:', err.message);
-    process.exit(1);
+    console.warn('    Could not fetch API status:', err.message);
   }
+
+  // 2. Fetch teams
+  console.log('\n[2] Fetching teams...');
+  const teamsData = await apiFetch(`/teams?league=${LEAGUE_ID}&season=${WC_SEASON}`);
+  const apiTeams = teamsData?.response || [];
+  console.log(`    Found ${apiTeams.length} teams`);
+
+  for (const entry of apiTeams) {
+    const team = entry.team;
+    const pot = getPotForTeam(team.name);
+    const row = {
+      api_id: String(team.id),
+      name: team.name,
+      logo_url: team.logo || null,
+      pot,
+    };
+    const { error } = await supabase
+      .from('teams')
+      .upsert(row, { onConflict: 'api_id' });
+    if (error) console.warn(`    Error upserting team ${team.name}:`, error.message);
+    else console.log(`    ✓ ${team.name} (pot ${pot})`);
+  }
+
+  // 3. Fetch player squads
+  console.log('\n[3] Fetching player squads...');
+  for (const entry of apiTeams) {
+    const team = entry.team;
+    console.log(`    Fetching squad for ${team.name} (id: ${team.id})...`);
+    try {
+      const squadData = await apiFetch(`/players/squads?team=${team.id}`);
+      const players = squadData?.response?.[0]?.players || [];
+      for (const player of players) {
+        const row = {
+          api_id: String(player.id),
+          team_api_id: String(team.id),
+          name: player.name,
+          position: player.position,
+          number: player.number || null,
+          photo_url: player.photo || null,
+        };
+        const { error } = await supabase
+          .from('players')
+          .upsert(row, { onConflict: 'api_id' });
+        if (error) console.warn(`      Error upserting player ${player.name}:`, error.message);
+      }
+      console.log(`      ✓ ${players.length} players`);
+    } catch (err) {
+      console.warn(`      Error fetching squad for ${team.name}:`, err.message);
+    }
+    await sleep(1100); // throttle: 1 req/sec
+  }
+
+  // 4. Fetch fixtures
+  console.log('\n[4] Fetching fixtures...');
+  const fixturesData = await apiFetch(`/fixtures?league=${LEAGUE_ID}&season=${WC_SEASON}`);
+  const apiFixtures = fixturesData?.response || [];
+  console.log(`    Found ${apiFixtures.length} fixtures`);
+
+  for (const entry of apiFixtures) {
+    const f = entry.fixture;
+    const teams = entry.teams;
+    const goals = entry.goals;
+    const row = {
+      api_id: String(f.id),
+      home_team_api_id: String(teams.home.id),
+      away_team_api_id: String(teams.away.id),
+      home_score: goals.home,
+      away_score: goals.away,
+      status: f.status.short,
+      kickoff_at: f.date || null,
+    };
+    const { error } = await supabase
+      .from('fixtures')
+      .upsert(row, { onConflict: 'api_id' });
+    if (error) console.warn(`    Error upserting fixture ${f.id}:`, error.message);
+  }
+  console.log(`    ✓ ${apiFixtures.length} fixtures upserted`);
+
+  console.log('\n--- Backfill complete! ---');
 }
 
-main();
+main().catch(err => {
+  console.error('Fatal error:', err);
+  process.exit(1);
+});

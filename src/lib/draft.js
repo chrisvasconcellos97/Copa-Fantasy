@@ -1,47 +1,43 @@
 /**
- * Returns an array of player indices in snake draft order.
- * e.g. 3 players, 2 rounds => [0,1,2, 2,1,0]
+ * Returns the full snake-order array of player indices for all rounds.
+ * e.g. 3 players, 2 rounds → [0,1,2, 2,1,0]
  */
-export function getSnakeOrder(players, totalRounds = 8) {
-  const n = Array.isArray(players) ? players.length : players;
+export function getSnakeOrder(players, totalRounds) {
   const order = [];
-  for (let r = 0; r < totalRounds; r++) {
-    const round = Array.from({ length: n }, (_, i) => i);
-    if (r % 2 === 1) round.reverse();
-    order.push(...round);
+  const n = players.length;
+  for (let round = 0; round < totalRounds; round++) {
+    const indices = round % 2 === 0
+      ? Array.from({ length: n }, (_, i) => i)
+      : Array.from({ length: n }, (_, i) => n - 1 - i);
+    order.push(...indices);
   }
   return order;
 }
 
 /**
- * Given current picks array and players array, return the player object
- * whose turn it is to pick.
+ * Returns the player index (in the players array) of the current picker.
  */
-export function getCurrentPicker(picks, players, totalRounds = 8) {
-  const n = players.length;
-  if (n === 0) return null;
-  const order = getSnakeOrder(n, totalRounds);
-  const pickIndex = picks.length;
-  if (pickIndex >= order.length) return null;
-  return players[order[pickIndex]] || null;
+export function getCurrentPicker(picks, players, totalRounds) {
+  if (!players || players.length === 0) return -1;
+  const order = getSnakeOrder(players, totalRounds);
+  const picksDone = picks ? picks.length : 0;
+  if (picksDone >= order.length) return -1;
+  return order[picksDone];
 }
 
 /**
- * Returns the current round number (1-based) given a 1-based pick number and
- * number of players.
+ * Returns the pot number (1-4) for a given pick number (0-indexed).
+ * potSize = number of teams per pot (default 12 for 48-team WC).
+ */
+export function getPotFromPickNumber(pickNumber, potSize = 12) {
+  const pot = Math.floor(pickNumber / potSize) + 1;
+  return Math.min(pot, 4);
+}
+
+/**
+ * Returns the round number (0-indexed) for a given pick number and player count.
  */
 export function getRoundFromPickNumber(pickNumber, numPlayers) {
-  return Math.floor((pickNumber - 1) / numPlayers) + 1;
-}
-
-/**
- * Maps pick number to a pot (1-4) using a 2-rounds-per-pot convention.
- * Rounds 1-2 → Pot 1, Rounds 3-4 → Pot 2, Rounds 5-6 → Pot 3, Rounds 7-8 → Pot 4
- */
-export function getPotFromPickNumber(pickNumber, numPlayers) {
-  const round = getRoundFromPickNumber(pickNumber, numPlayers);
-  if (round <= 2) return 1;
-  if (round <= 4) return 2;
-  if (round <= 6) return 3;
-  return 4;
+  if (!numPlayers || numPlayers === 0) return 0;
+  return Math.floor(pickNumber / numPlayers);
 }

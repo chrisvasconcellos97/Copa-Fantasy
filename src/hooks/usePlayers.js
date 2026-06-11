@@ -8,44 +8,52 @@ export function usePlayers(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let channel;
+    let isMounted = true;
 
-    async function loadPlayers() {
+    async function fetchPlayers() {
       setLoading(true);
       const { data, error } = await supabase
         .from('game_players')
         .select('*')
         .eq('game_id', gameId)
         .order('joined_at', { ascending: true });
-      if (!error && data) setPlayers(data);
-      setLoading(false);
+      if (isMounted) {
+        if (!error) setPlayers(data || []);
+        setLoading(false);
+      }
     }
 
-    loadPlayers();
+    fetchPlayers();
 
-    channel = supabase
-      .channel(`players-${gameId}`)
+    const channel = supabase
+      .channel(`game_players:${gameId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          setPlayers((prev) => {
-            if (prev.find((p) => p.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
-          });
+          if (isMounted) {
+            setPlayers((prev) => {
+              const exists = prev.find((p) => p.id === payload.new.id);
+              if (exists) return prev;
+              return [...prev, payload.new];
+            });
+          }
         }
       )
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
+          if (isMounted) {
+            setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
+          }
         }
       )
       .subscribe();
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      isMounted = false;
+      supabase.removeChannel(channel);
     };
   }, [gameId]);
 

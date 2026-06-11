@@ -1,13 +1,30 @@
-export default function PlayerCard({ player, selected, onClick, showPosition }) {
-  const posClass = { FWD: 'badge-fwd', MID: 'badge-mid', DEF: 'badge-def', GK: 'badge-gk' }[player.position] || 'badge-mid';
+import React from 'react';
+import { normalizePosition } from '../lib/constants.js';
+
+export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
+  const pos = normalizePosition(player.position);
+
   return (
-    <div className={`player-card${selected ? ' selected' : ''}`} onClick={onClick}>
-      {player.photo_url
-        ? <img src={player.photo_url} alt={player.name} />
-        : <div style={{ width:56,height:56,borderRadius:'50%',background:'var(--navy-3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.5rem' }}>👤</div>
-      }
-      <div className="player-name">{player.name}</div>
-      {showPosition && <span className={`badge ${posClass}`}>{player.position}</span>}
+    <div
+      className={`player-card${selected ? ' selected' : ''}`}
+      onClick={() => onClick && onClick(player)}
+    >
+      {player.photo_url ? (
+        <img src={player.photo_url} alt={player.name} className="player-photo" />
+      ) : (
+        <div className="player-photo-placeholder">
+          {player.name ? player.name[0].toUpperCase() : '?'}
+        </div>
+      )}
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, textAlign: 'center', lineHeight: 1.3 }}>
+        {player.name}
+      </span>
+      {player.number && (
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>#{player.number}</span>
+      )}
+      {showPosition && (
+        <span className={`position-badge pos-${pos}`}>{pos}</span>
+      )}
     </div>
   );
 }

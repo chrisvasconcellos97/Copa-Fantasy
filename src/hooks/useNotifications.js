@@ -1,32 +1,76 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useNotifications(myPlayerId) {
-  const [unread, setUnread] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [showPoke, setShowPoke] = useState(false);
+  const [pokeMessage, setPokeMessage] = useState('');
+  const dismissTimer = useRef(null);
 
   useEffect(() => {
     if (!myPlayerId) return;
-    let sub;
 
-    async function load() {
-      const { data } = await supabase.from('notifications').select('*')
-        .eq('game_player_id', myPlayerId).eq('read', false).order('created_at', { ascending: false });
-      setUnread(data || []);
+    let isMounted = true;
+
+    async function fetchUnread() {
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('game_player_id', myPlayerId)
+        .eq('read', false);
+      if (isMounted) setUnread(count || 0);
     }
-    load();
 
-    sub = supabase.channel('notifs-' + myPlayerId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'game_player_id=eq.' + myPlayerId },
-        (p) => setUnread(prev => [p.new, ...prev]))
+    fetchUnread();
+
+    const channel = supabase
+      .channel(`notifications:${myPlayerId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `game_player_id=eq.${myPlayerId}`,
+        },
+        async (payload) => {
+          if (!isMounted) return;
+          const notif = payload.new;
+          setUnread((prev) => prev + 1);
+          if (notif.type === 'poke') {
+            setPokeMessage(notif.message || "It's your turn to pick!");
+            setShowPoke(true);
+            if (dismissTimer.current) clearTimeout(dismissTimer.current);
+            dismissTimer.current = setTimeout(() => {
+              if (isMounted) {
+                setShowPoke(false);
+                markRead(notif.id);
+              }
+            }, 6000);
+          }
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(sub); };
+    return () => {
+      isMounted = false;
+      if (dismissTimer.current) clearTimeout(dismissTimer.current);
+      supabase.removeChannel(channel);
+    };
   }, [myPlayerId]);
 
   async function markRead(notifId) {
-    await supabase.from('notifications').update({ read: true }).eq('id', notifId);
-    setUnread(prev => prev.filter(n => n.id !== notifId));
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notifId);
+    setUnread((prev) => Math.max(0, prev - 1));
   }
 
-  return { unread, markRead };
+  function dismissPoke() {
+    setShowPoke(false);
+    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+  }
+
+  return { unread, showPoke, dismissPoke, pokeMessage };
 }

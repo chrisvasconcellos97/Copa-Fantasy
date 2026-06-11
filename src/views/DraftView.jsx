@@ -6,7 +6,7 @@ import { useGame } from '../hooks/useGame'
 import { usePlayers } from '../hooks/usePlayers'
 import { useDraft } from '../hooks/useDraft'
 import { useNotifications } from '../hooks/useNotifications'
-import { getCurrentPicker, getPotFromPickNumber, getSnakeOrder } from '../lib/draft'
+import { getCurrentPicker, getPotFromPickNumber } from '../lib/draft'
 import TeamCard from '../components/TeamCard'
 import ConfirmBar from '../components/ConfirmBar'
 import SnakeOrderBar from '../components/SnakeOrderBar'
@@ -30,14 +30,9 @@ export default function DraftView() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [showHost, setShowHost] = useState(false)
-
-  // Player selection state
   const [myPlayerPicks, setMyPlayerPicks] = useState([])
-  const [selectedPlayerForTeam, setSelectedPlayerForTeam] = useState({}) // teamApiId -> { FWD, MID, DEF }
   const [selectingTeamId, setSelectingTeamId] = useState(null)
   const [selectingPosition, setSelectingPosition] = useState(null)
-
-  // Captain state
   const [captainPickId, setCaptainPickId] = useState(null)
   const [captainSubmitting, setCaptainSubmitting] = useState(false)
 
@@ -59,7 +54,6 @@ export default function DraftView() {
     supabase.from('players').select('*').then(({ data }) => setAllPlayers(data || []))
   }, [])
 
-  // Load my player picks when in player selection phase
   useEffect(() => {
     if (!me || !game || game.status !== 'selecting_players') return
     supabase.from('player_picks').select('*').eq('game_id', gameId).eq('game_player_id', me.id)
@@ -73,13 +67,11 @@ export default function DraftView() {
     return () => supabase.removeChannel(ch)
   }, [me, game, gameId])
 
-  // Derive current picker info
   const currentPicker = game ? getCurrentPicker(picks, players, game.current_pick_number) : null
   const isMyTurn = currentPicker && me && currentPicker.id === me.id
   const currentPot = game ? getPotFromPickNumber(game.current_pick_number, players.length) : 1
   const currentPickerIndex = currentPicker ? players.findIndex(p => p.id === currentPicker.id) : -1
 
-  // Teams taken map
   const takenMap = useMemo(() => {
     const m = {}
     for (const pick of picks) {
@@ -89,10 +81,8 @@ export default function DraftView() {
     return m
   }, [picks, players])
 
-  // My draft picks
   const myDraftPicks = picks.filter(p => p.player_id === me?.id)
 
-  // Teams by pot
   const teamsByPot = useMemo(() => {
     const byPot = { 1: [], 2: [], 3: [], 4: [] }
     for (const t of teams) {
@@ -118,7 +108,6 @@ export default function DraftView() {
 
       const nextPick = game.current_pick_number + 1
       const totalPicks = players.length * 8
-
       let nextStatus = 'drafting_teams'
       if (nextPick > totalPicks) nextStatus = 'selecting_players'
 
@@ -145,7 +134,6 @@ export default function DraftView() {
     })
   }
 
-  // Player selection logic
   const getPicksForTeam = (teamApiId) => myPlayerPicks.filter(pp => {
     const dp = picks.find(dk => dk.id === pp.draft_pick_id)
     return dp && dp.team_api_id === teamApiId
@@ -177,7 +165,6 @@ export default function DraftView() {
     setSubmitting(false)
   }
 
-  // Check if all player picks done and transition to captain phase
   useEffect(() => {
     if (!game || game.status !== 'selecting_players' || !me || players.length === 0) return
     const checkAllDone = async () => {
@@ -190,7 +177,6 @@ export default function DraftView() {
     if (myPlayerPicks.length > 0) checkAllDone()
   }, [myPlayerPicks, game, picks, gameId, me, players])
 
-  // Captain selection
   async function submitCaptain() {
     if (!captainPickId || !me) return
     setCaptainSubmitting(true)
@@ -202,8 +188,6 @@ export default function DraftView() {
         player_pick_id: captainPickId
       })
       if (e) throw e
-
-      // Check if all captains selected
       const { data: captains } = await supabase.from('captain_picks').select('*').eq('game_id', gameId)
       if (captains && captains.length >= players.length) {
         await supabase.from('games').update({ status: 'tournament' }).eq('id', gameId)
@@ -214,30 +198,24 @@ export default function DraftView() {
     setCaptainSubmitting(false)
   }
 
-  if (!game) return <div className="loading-screen"><div className="spinner" /><span>Loading draft…</span></div>
+  if (!game) return <div className="loading-screen"><div className="spinner" /><span>Loading draft...</span></div>
 
-  // Captain phase
   if (game.status === 'selecting_captain') {
     return (
       <div className="view">
         <div className="phase-header">
           <div className="phase-title">Choose Your Captain</div>
-          <div className="phase-sub">2× points multiplier on all their scores</div>
+          <div className="phase-sub">2x points multiplier on all their scores</div>
         </div>
         {error && <div className="error-msg">{error}</div>}
-        <CaptainGrid
-          playerPicks={myPlayerPicks}
-          captainPickId={captainPickId}
-          onSelectCaptain={(pp) => setCaptainPickId(pp.id)}
-        />
+        <CaptainGrid playerPicks={myPlayerPicks} captainPickId={captainPickId} onSelectCaptain={(pp) => setCaptainPickId(pp.id)} />
         <button className="btn-primary" onClick={submitCaptain} disabled={!captainPickId || captainSubmitting}>
-          {captainSubmitting ? 'Saving…' : 'Confirm Captain'}
+          {captainSubmitting ? 'Saving...' : 'Confirm Captain'}
         </button>
       </div>
     )
   }
 
-  // Player selection phase
   if (game.status === 'selecting_players') {
     const playersForTeam = selectingTeamId
       ? allPlayers.filter(p => p.team_api_id === selectingTeamId && p.position !== 'GK')
@@ -250,21 +228,17 @@ export default function DraftView() {
           <div className="phase-sub">Pick 1 FWD, 1 MID, 1 DEF per team</div>
         </div>
         {error && <div className="error-msg">{error}</div>}
-
         {!selectingTeamId ? (
           <div>
             {myTeamsNeedingPlayers.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-icon">✅</div>
-                <div>All players selected! Waiting for others…</div>
+                <div className="empty-icon">All players selected! Waiting for others...</div>
               </div>
             ) : (
               myDraftPicks.map(dp => {
                 const team = teams.find(t => t.api_id === dp.team_api_id)
                 const existing = getPicksForTeam(dp.team_api_id)
                 const positions = ['FWD', 'MID', 'DEF']
-                const filled = existing.map(pp => pp.position)
-                const neededPositions = positions.filter(pos => !filled.includes(pos))
                 if (!team) return null
                 return (
                   <div key={dp.id} className="card">
@@ -276,16 +250,15 @@ export default function DraftView() {
                       {positions.map(pos => {
                         const pick = existing.find(pp => pp.position === pos)
                         return (
-                          <button
-                            key={pos}
-                            className={'squad-slot ' + pos.toLowerCase() + (pick ? '' : ' needed')}
+                          <button key={pos}
+                            className={'squad-slot ' + pos.toLowerCase()}
                             style={{ flex: 1, padding: '8px 4px', cursor: pick ? 'default' : 'pointer', minHeight: 48, fontSize: 11 }}
                             onClick={() => { if (!pick) { setSelectingTeamId(dp.team_api_id); setSelectingPosition(pos) } }}
                             disabled={!!pick}
                           >
                             <div style={{ fontWeight: 700 }}>{pos}</div>
-                            {pick && <div style={{ fontSize: 10, marginTop: 2, color: 'var(--text)' }}>{pick.player_api_id}</div>}
-                            {!pick && <div style={{ fontSize: 10, marginTop: 2, color: 'var(--gold)' }}>+ Pick</div>}
+                            {pick ? <div style={{ fontSize: 10, marginTop: 2 }}>{pick.player_api_id}</div>
+                                  : <div style={{ fontSize: 10, marginTop: 2, color: 'var(--gold)' }}>+ Pick</div>}
                           </button>
                         )
                       })}
@@ -299,40 +272,27 @@ export default function DraftView() {
           <div>
             <button className="btn-secondary" style={{ marginBottom: 12, width: 'auto', padding: '8px 16px' }}
               onClick={() => { setSelectingTeamId(null); setSelectingPosition(null) }}>
-              ← Back
+              Back
             </button>
             <div className="card-title">Pick {selectingPosition} for {teams.find(t => t.api_id === selectingTeamId)?.name}</div>
             <div className="players-grid">
-              {playersForTeam.filter(p => p.position === selectingPosition || (selectingPosition === 'FWD' && p.position === 'FWD')).map(p => {
-                const alreadyPicked = myPlayerPicks.some(pp => pp.player_api_id === p.api_id)
-                return (
-                  <PlayerCard
-                    key={p.id}
-                    player={p}
-                    showPosition
-                    selected={alreadyPicked}
-                    onClick={() => {
-                      const dp = myDraftPicks.find(d => d.team_api_id === selectingTeamId)
-                      if (dp && !alreadyPicked) selectPlayer(p, selectingTeamId, selectingPosition, dp.id)
-                    }}
-                  />
-                )
-              })}
-              {playersForTeam.filter(p => p.position === selectingPosition).length === 0 && (
-                <div style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 20 }}>
-                  No {selectingPosition} players found. Pick any position.
-                  <div className="players-grid" style={{ marginTop: 10 }}>
-                    {playersForTeam.map(p => (
-                      <PlayerCard key={p.id} player={p} showPosition
-                        onClick={() => {
-                          const dp = myDraftPicks.find(d => d.team_api_id === selectingTeamId)
-                          if (dp) selectPlayer(p, selectingTeamId, selectingPosition, dp.id)
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+              {playersForTeam.filter(p => p.position === selectingPosition).length > 0
+                ? playersForTeam.filter(p => p.position === selectingPosition).map(p => (
+                    <PlayerCard key={p.id} player={p} showPosition
+                      selected={myPlayerPicks.some(pp => pp.player_api_id === p.api_id)}
+                      onClick={() => {
+                        const dp = myDraftPicks.find(d => d.team_api_id === selectingTeamId)
+                        if (dp && !myPlayerPicks.some(pp => pp.player_api_id === p.api_id)) selectPlayer(p, selectingTeamId, selectingPosition, dp.id)
+                      }} />
+                  ))
+                : playersForTeam.map(p => (
+                    <PlayerCard key={p.id} player={p} showPosition
+                      onClick={() => {
+                        const dp = myDraftPicks.find(d => d.team_api_id === selectingTeamId)
+                        if (dp) selectPlayer(p, selectingTeamId, selectingPosition, dp.id)
+                      }} />
+                  ))
+              }
             </div>
           </div>
         )}
@@ -340,51 +300,30 @@ export default function DraftView() {
     )
   }
 
-  // Team draft phase
   return (
     <div className="view">
       {unread.map(n => (
         <PokeToast key={n.id} message={n.message} onDismiss={() => dismiss(n.id)} />
       ))}
-
       <div className="phase-header">
         <div className="phase-title">Team Draft</div>
-        <div className="phase-sub">
-          Pick #{game.current_pick_number} of {game.total_picks} · Pot {currentPot}
-        </div>
+        <div className="phase-sub">Pick #{game.current_pick_number} of {game.total_picks} - Pot {currentPot}</div>
       </div>
-
       <SnakeOrderBar players={players} currentPickerIndex={currentPickerIndex} myPlayerId={me?.id} />
-
-      {isMyTurn ? (
-        <div className="turn-banner">🎯 Your turn to pick!</div>
-      ) : (
-        <div className="waiting-banner">
-          Waiting for {currentPicker?.name || '…'} to pick…
-        </div>
-      )}
-
+      {isMyTurn
+        ? <div className="turn-banner">Your turn to pick!</div>
+        : <div className="waiting-banner">Waiting for {currentPicker?.name || '...'} to pick...</div>
+      }
       {error && <div className="error-msg">{error}</div>}
-
       {isHost && (
-        <button
-          className="btn-secondary"
-          style={{ marginBottom: 12, width: 'auto', padding: '6px 14px', fontSize: 12 }}
-          onClick={() => setShowHost(!showHost)}
-        >
+        <button className="btn-secondary" style={{ marginBottom: 12, width: 'auto', padding: '6px 14px', fontSize: 12 }}
+          onClick={() => setShowHost(!showHost)}>
           {showHost ? 'Hide' : 'Show'} Host View
         </button>
       )}
       {showHost && isHost && (
-        <HostDashboard
-          players={players}
-          picks={picks}
-          currentPicker={currentPicker}
-          onPoke={handlePokePlayer}
-          teams={teams}
-        />
+        <HostDashboard players={players} picks={picks} currentPicker={currentPicker} onPoke={handlePokePlayer} teams={teams} />
       )}
-
       {[1, 2, 3, 4].map(pot => {
         const potTeams = teamsByPot[pot] || []
         if (pot !== currentPot && !isHost) return null
@@ -394,33 +333,23 @@ export default function DraftView() {
             <div className="teams-grid">
               {potTeams.map(team => {
                 const taken = !!takenMap[team.api_id]
-                const takenBy = takenMap[team.api_id]
                 return (
-                  <TeamCard
-                    key={team.api_id}
-                    team={team}
+                  <TeamCard key={team.api_id} team={team}
                     selected={selectedTeam?.api_id === team.api_id}
-                    taken={taken}
-                    takenBy={takenBy}
+                    taken={taken} takenBy={takenMap[team.api_id]}
                     disabled={!isMyTurn || team.pot !== currentPot}
                     onClick={() => {
                       if (!taken && isMyTurn && team.pot === currentPot) {
                         setSelectedTeam(selectedTeam?.api_id === team.api_id ? null : team)
                       }
-                    }}
-                  />
+                    }} />
                 )
               })}
             </div>
           </div>
         )
       })}
-
-      <ConfirmBar
-        selectedTeam={selectedTeam}
-        onConfirm={confirmTeamPick}
-        onCancel={() => setSelectedTeam(null)}
-      />
+      <ConfirmBar selectedTeam={selectedTeam} onConfirm={confirmTeamPick} onCancel={() => setSelectedTeam(null)} />
     </div>
   )
 }

@@ -7,21 +7,45 @@ export function useDraft(gameId) {
 
   useEffect(() => {
     if (!gameId) return;
-    let sub;
 
-    async function load() {
-      const { data } = await supabase.from('draft_picks').select('*').eq('game_id', gameId).order('pick_number');
-      setPicks(data || []);
-      setLoading(false);
+    let isMounted = true;
+
+    async function fetchPicks() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('draft_picks')
+        .select('*')
+        .eq('game_id', gameId)
+        .order('pick_number', { ascending: true });
+      if (isMounted) {
+        if (!error) setPicks(data || []);
+        setLoading(false);
+      }
     }
-    load();
 
-    sub = supabase.channel('picks-' + gameId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: 'game_id=eq.' + gameId },
-        (p) => setPicks(prev => [...prev, p.new]))
+    fetchPicks();
+
+    const channel = supabase
+      .channel(`draft_picks:${gameId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `game_id=eq.${gameId}` },
+        (payload) => {
+          if (isMounted) {
+            setPicks((prev) => {
+              const exists = prev.find((p) => p.id === payload.new.id);
+              if (exists) return prev;
+              return [...prev, payload.new].sort((a, b) => a.pick_number - b.pick_number);
+            });
+          }
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(sub); };
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
   }, [gameId]);
 
   return { picks, loading };
