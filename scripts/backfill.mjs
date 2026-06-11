@@ -33,7 +33,10 @@ async function apiGet(path, params = {}) {
     url.searchParams.set(k, String(v));
   }
   const res = await fetch(url.toString(), {
-    headers: { 'x-apisports-key': API_KEY },
+    headers: {
+      'x-apisports-key': API_KEY,
+      'Origin': 'https://copa-fantasy-psi.vercel.app',
+    },
   });
   if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
   return res.json();
