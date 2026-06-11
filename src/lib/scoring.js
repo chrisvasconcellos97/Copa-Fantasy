@@ -22,36 +22,35 @@ export const PLAYER_POINTS = {
 };
 
 /**
- * Compute a player's score from an array of match events.
- * Each event should have { type, detail } where type is e.g. 'Goal', 'Card', 'subst'
+ * Compute a player's score from their match events.
+ * events: array of match_event rows with { type, detail }
+ * Returns total points number.
  */
 export function computePlayerScore(events) {
+  if (!events || events.length === 0) return 0;
   let total = 0;
-  const breakdown = {};
-
-  const add = (key, points) => {
-    total += points;
-    breakdown[key] = (breakdown[key] || 0) + points;
-  };
-
   for (const event of events) {
     const type = (event.type || '').toLowerCase();
     const detail = (event.detail || '').toLowerCase();
 
-    if (type === 'goal') {
-      if (detail !== 'own goal') {
-        add('goal', PLAYER_POINTS.goal);
-      }
-    } else if (type === 'card') {
-      if (detail === 'yellow card') {
-        add('yellow_card', PLAYER_POINTS.yellow_card);
-      } else if (detail === 'red card' || detail === 'second yellow card') {
-        add('red_card', PLAYER_POINTS.red_card);
-      }
+    if (type === 'goal' && detail !== 'own goal') {
+      total += PLAYER_POINTS.goal;
     } else if (type === 'assist') {
-      add('assist', PLAYER_POINTS.assist);
+      total += PLAYER_POINTS.assist;
+    } else if (type === 'card') {
+      if (detail === 'yellow card') total += PLAYER_POINTS.yellow_card;
+      else if (detail === 'red card' || detail === 'second yellow card') total += PLAYER_POINTS.red_card;
+    } else if (type === 'clean_sheet_gk') {
+      total += PLAYER_POINTS.clean_sheet_gk;
+    } else if (type === 'clean_sheet_def') {
+      total += PLAYER_POINTS.clean_sheet_def;
+    } else if (type === 'motm') {
+      total += PLAYER_POINTS.motm;
+    } else if (type === 'top_scorer') {
+      total += PLAYER_POINTS.top_scorer;
+    } else if (type === 'golden_boot') {
+      total += PLAYER_POINTS.golden_boot;
     }
   }
-
-  return { total, breakdown };
+  return total;
 }

@@ -1,54 +1,112 @@
-export default function HostDashboard({ players, picks, currentPickerIndex, onPoke, teams }) {
-  if (!players) return null;
+import React from 'react';
 
-  const teamMap = {};
-  if (teams) teams.forEach((t) => { teamMap[t.api_id] = t; });
-
+/**
+ * HostDashboard – host-only panel showing each player's pick count and poke button.
+ *
+ * Props:
+ *   players            Array<{id, player_name}>
+ *   picks              Array<{game_player_id}>
+ *   currentPickerIndex number
+ *   onPoke             function(playerId)
+ *   teams              Array<team objects>
+ */
+export default function HostDashboard({ players = [], picks = [], currentPickerIndex = 0, onPoke, teams = [] }) {
   return (
     <div className="host-dashboard">
-      <div className="section-header">
-        <span className="section-title">🎮 Host Dashboard</span>
-        <span className="badge badge-gold">Host</span>
-      </div>
-      {players.map((player, i) => {
-        const playerPicks = picks
-          ? picks.filter((p) => p.game_player_id === player.id)
-          : [];
-        const isCurrent = i === currentPickerIndex;
-        return (
-          <div key={player.id} className="host-player-row">
-            <div
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: isCurrent ? 'var(--gold)' : 'var(--border)',
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ flex: 1, fontWeight: isCurrent ? 700 : 400 }}>
-              {player.player_name}
-              {player.is_host && (
-                <span className="badge badge-muted" style={{ marginLeft: '0.4rem', fontSize: '0.65rem' }}>
-                  host
-                </span>
+      <p className="host-dashboard__title">🎛️ Host Dashboard</p>
+
+      <div className="host-dashboard__list">
+        {players.map((player, idx) => {
+          const playerPicks = picks.filter((p) => p.game_player_id === player.id);
+          const isCurrent = idx === currentPickerIndex;
+
+          return (
+            <div key={player.id} className={`hd-row${isCurrent ? ' hd-row--current' : ''}`}>
+              <div className="hd-row__info">
+                {isCurrent && <span className="hd-row__arrow">▶</span>}
+                <span className="hd-row__name">{player.player_name}</span>
+                <span className="hd-row__count">{playerPicks.length} picks</span>
+              </div>
+
+              <div className="hd-row__teams">
+                {playerPicks.map((pick) => {
+                  const team = teams.find((t) => t.api_id === pick.team_api_id);
+                  return team ? (
+                    <img
+                      key={pick.id}
+                      src={team.logo_url}
+                      alt={team.name}
+                      className="hd-team-logo"
+                      title={team.name}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                  ) : null;
+                })}
+              </div>
+
+              {isCurrent && onPoke && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => onPoke(player.id)}
+                  title={`Poke ${player.player_name}`}
+                >
+                  👋 Poke
+                </button>
               )}
-            </span>
-            <span className="label text-gold" style={{ marginRight: '0.5rem' }}>
-              {playerPicks.length}/8
-            </span>
-            {isCurrent && onPoke && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={() => onPoke(player)}
-                title="Poke player"
-              >
-                👋 Poke
-              </button>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
+
+      <style>{`
+        .host-dashboard {
+          background: var(--card-bg);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: 1rem;
+        }
+        .host-dashboard__title {
+          font-weight: 700;
+          font-size: 0.88rem;
+          margin-bottom: 0.75rem;
+          color: var(--text-muted);
+        }
+        .host-dashboard__list { display: flex; flex-direction: column; gap: 0.4rem; }
+        .hd-row {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.5rem 0.6rem;
+          border-radius: var(--radius-sm);
+          background: #0e0e16;
+          border: 1px solid var(--border);
+          flex-wrap: wrap;
+        }
+        .hd-row--current {
+          border-color: var(--gold);
+          background: rgba(255,215,0,0.04);
+        }
+        .hd-row__info {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          min-width: 120px;
+        }
+        .hd-row__arrow { color: var(--gold); font-size: 0.75rem; }
+        .hd-row__name { font-weight: 600; font-size: 0.85rem; }
+        .hd-row__count { font-size: 0.75rem; color: var(--text-muted); }
+        .hd-row__teams {
+          display: flex;
+          gap: 0.25rem;
+          flex-wrap: wrap;
+          flex: 1;
+        }
+        .hd-team-logo {
+          width: 22px;
+          height: 22px;
+          object-fit: contain;
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,28 +1,30 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase.js';
 
 export function useGame(gameId) {
   const [game, setGame] = useState(null);
   const [loading, setLoading] = useState(true);
+  const channelRef = useRef(null);
 
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId) { setLoading(false); return; }
 
-    let isMounted = true;
+    let cancelled = false;
 
-    async function fetchGame() {
+    async function load() {
+      setLoading(true);
       const { data, error } = await supabase
         .from('games')
         .select('*')
         .eq('id', gameId)
         .single();
-      if (isMounted) {
+      if (!cancelled) {
         if (!error) setGame(data);
         setLoading(false);
       }
     }
 
-    fetchGame();
+    load();
 
     const channel = supabase
       .channel(`game-${gameId}`)
@@ -30,13 +32,15 @@ export function useGame(gameId) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         (payload) => {
-          if (isMounted) setGame(payload.new);
+          if (!cancelled) setGame(payload.new);
         }
       )
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
-      isMounted = false;
+      cancelled = true;
       supabase.removeChannel(channel);
     };
   }, [gameId]);

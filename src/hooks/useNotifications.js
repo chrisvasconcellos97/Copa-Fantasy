@@ -1,34 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
-/**
- * Subscribes to notifications for myPlayerId, surfaces poke toasts, and marks them read.
- * @param {string} myPlayerId
- * @returns {{ unread: number, showPoke: boolean, dismissPoke: Function, pokeMessage: string }}
- */
 export function useNotifications(myPlayerId) {
   const [unread, setUnread] = useState(0);
   const [showPoke, setShowPoke] = useState(false);
   const [pokeMessage, setPokeMessage] = useState('');
 
-  const dismissPoke = useCallback(() => setShowPoke(false), []);
+  const dismissPoke = useCallback(() => {
+    setShowPoke(false);
+    setPokeMessage('');
+  }, []);
 
   useEffect(() => {
     if (!myPlayerId) return;
 
-    let cancelled = false;
+    let isMounted = true;
 
-    // Load existing unread count
-    async function loadUnread() {
+    async function fetchUnread() {
       const { count } = await supabase
         .from('notifications')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('game_player_id', myPlayerId)
         .eq('read', false);
-      if (!cancelled) setUnread(count || 0);
+      if (isMounted) setUnread(count || 0);
     }
 
-    loadUnread();
+    fetchUnread();
 
     const channel = supabase
       .channel(`notifications-${myPlayerId}`)
@@ -41,29 +38,26 @@ export function useNotifications(myPlayerId) {
           filter: `game_player_id=eq.${myPlayerId}`,
         },
         async (payload) => {
-          if (cancelled) return;
-          const notification = payload.new;
+          if (!isMounted) return;
+          const notif = payload.new;
           setUnread((prev) => prev + 1);
 
-          if (notification.type === 'poke') {
-            setPokeMessage(notification.message || "It's your turn to pick!");
+          if (notif.type === 'poke') {
+            setPokeMessage(notif.message || "It's your turn to pick!");
             setShowPoke(true);
           }
 
-          // Mark as read after a brief delay
-          setTimeout(async () => {
-            await supabase
-              .from('notifications')
-              .update({ read: true })
-              .eq('id', notification.id);
-            if (!cancelled) setUnread((prev) => Math.max(0, prev - 1));
-          }, 6000);
+          // Mark as read
+          await supabase
+            .from('notifications')
+            .update({ read: true })
+            .eq('id', notif.id);
         }
       )
       .subscribe();
 
     return () => {
-      cancelled = true;
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [myPlayerId]);

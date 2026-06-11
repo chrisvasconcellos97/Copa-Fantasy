@@ -1,5 +1,5 @@
 export const SCORING = {
-  // Team stage results
+  // Team results
   GROUP_WIN: 3,
   GROUP_DRAW: 1,
   GROUP_LOSS: 0,
@@ -21,21 +21,21 @@ export const SCORING = {
 };
 
 export const RESULT_TYPES = [
-  { value: 'group_win', label: 'Group Stage Win (+3)' },
-  { value: 'group_draw', label: 'Group Stage Draw (+1)' },
-  { value: 'group_loss', label: 'Group Stage Loss (+0)' },
-  { value: 'r32_win', label: 'Round of 32 Win (+5)' },
-  { value: 'qf_win', label: 'Quarter-Final Win (+8)' },
-  { value: 'sf_win', label: 'Semi-Final Win (+13)' },
-  { value: 'final_win', label: 'Final Win (+21)' },
-  { value: 'champion', label: 'Champion (+34)' },
+  { value: 'group_win', label: 'Group Stage Win', points: 3 },
+  { value: 'group_draw', label: 'Group Stage Draw', points: 1 },
+  { value: 'group_loss', label: 'Group Stage Loss', points: 0 },
+  { value: 'r32_win', label: 'Round of 32 Win', points: 5 },
+  { value: 'qf_win', label: 'Quarter-Final Win', points: 8 },
+  { value: 'sf_win', label: 'Semi-Final Win', points: 13 },
+  { value: 'final_win', label: 'Final Win', points: 21 },
+  { value: 'champion', label: 'Champion Bonus', points: 34 },
 ];
 
 export const BONUS_TYPES = [
-  { value: 'motm', label: 'Man of the Match (+5)' },
-  { value: 'top_scorer', label: 'Top Scorer Bonus (+15)' },
-  { value: 'golden_boot', label: 'Golden Boot (+20)' },
-  { value: 'custom', label: 'Custom Bonus' },
+  { value: 'motm', label: 'Man of the Match', points: 5 },
+  { value: 'top_scorer', label: 'Tournament Top Scorer', points: 15 },
+  { value: 'golden_boot', label: 'Golden Boot', points: 20 },
+  { value: 'custom', label: 'Custom Bonus', points: 0 },
 ];
 
 export const FALLBACK_POTS = {
@@ -58,11 +58,11 @@ export const FALLBACK_POTS = {
 };
 
 export function normalizePosition(pos) {
-  if (!pos) return 'Unknown';
-  const p = pos.toUpperCase().trim();
-  if (p === 'G' || p === 'GK' || p === 'GOALKEEPER') return 'GK';
-  if (p === 'D' || p === 'DEF' || p === 'DEFENDER') return 'DEF';
-  if (p === 'M' || p === 'MID' || p === 'MIDFIELDER') return 'MID';
-  if (p === 'F' || p === 'FWD' || p === 'FORWARD' || p === 'ATTACKER') return 'FWD';
-  return pos;
+  if (!pos) return 'MID';
+  const p = pos.toUpperCase();
+  if (p.includes('GOAL') || p === 'GK' || p === 'G') return 'GK';
+  if (p.includes('DEF') || p === 'D' || p === 'CB' || p === 'LB' || p === 'RB') return 'DEF';
+  if (p.includes('MID') || p === 'M' || p === 'CM' || p === 'DM' || p === 'AM') return 'MID';
+  if (p.includes('FOR') || p.includes('ATT') || p === 'F' || p === 'ST' || p === 'LW' || p === 'RW') return 'FWD';
+  return 'MID';
 }

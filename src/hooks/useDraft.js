@@ -1,11 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-/**
- * Loads draft_picks for a game and subscribes to new picks in realtime.
- * @param {string} gameId
- * @returns {{ picks: Array, loading: boolean }}
- */
 export function useDraft(gameId) {
   const [picks, setPicks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,37 +8,32 @@ export function useDraft(gameId) {
   useEffect(() => {
     if (!gameId) return;
 
-    let cancelled = false;
+    let isMounted = true;
 
-    async function load() {
-      setLoading(true);
+    async function fetchPicks() {
       const { data, error } = await supabase
         .from('draft_picks')
         .select('*')
         .eq('game_id', gameId)
         .order('pick_number', { ascending: true });
-      if (!cancelled) {
+      if (isMounted) {
         if (!error) setPicks(data || []);
         setLoading(false);
       }
     }
 
-    load();
+    fetchPicks();
 
     const channel = supabase
-      .channel(`draft-${gameId}`)
+      .channel(`draft-picks-${gameId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'draft_picks',
-          filter: `game_id=eq.${gameId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'draft_picks', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) {
+          if (isMounted) {
             setPicks((prev) => {
-              if (prev.find((p) => p.id === payload.new.id)) return prev;
+              const exists = prev.some((p) => p.id === payload.new.id);
+              if (exists) return prev;
               const next = [...prev, payload.new];
               next.sort((a, b) => a.pick_number - b.pick_number);
               return next;
@@ -54,7 +44,7 @@ export function useDraft(gameId) {
       .subscribe();
 
     return () => {
-      cancelled = true;
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [gameId]);

@@ -1,17 +1,13 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase.js';
 
-/**
- * Loads game_players for a given game and subscribes to realtime changes.
- * @param {string} gameId
- * @returns {{ players: Array, loading: boolean }}
- */
 export function usePlayers(gameId) {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const channelRef = useRef(null);
 
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId) { setLoading(false); return; }
 
     let cancelled = false;
 
@@ -34,36 +30,21 @@ export function usePlayers(gameId) {
       .channel(`players-${gameId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'game_players',
-          filter: `game_id=eq.${gameId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) {
-            setPlayers((prev) => {
-              if (prev.find((p) => p.id === payload.new.id)) return prev;
-              return [...prev, payload.new];
-            });
-          }
+          if (!cancelled) setPlayers((prev) => [...prev, payload.new]);
         }
       )
       .on(
         'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'game_players',
-          filter: `game_id=eq.${gameId}`,
-        },
+        { event: 'DELETE', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}` },
         (payload) => {
-          if (!cancelled) {
-            setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
-          }
+          if (!cancelled) setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id));
         }
       )
       .subscribe();
+
+    channelRef.current = channel;
 
     return () => {
       cancelled = true;
