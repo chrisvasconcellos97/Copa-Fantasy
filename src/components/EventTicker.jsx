@@ -1,43 +1,45 @@
 import React from 'react';
 
-function eventIcon(type, detail) {
-  const t = (type || '').toLowerCase();
-  const d = (detail || '').toLowerCase();
-  if (t === 'goal') return '⚽';
-  if (t === 'card') {
-    if (d.includes('yellow')) return '🟨';
-    if (d.includes('red')) return '🟥';
-    return '🃏';
+const EVENT_ICONS = {
+  goal: '⚽',
+  card: '🟨',
+  yellow_card: '🟨',
+  red_card: '🟥',
+  subst: '🔁',
+  substitution: '🔁',
+  var: '📺',
+};
+
+function getIcon(event) {
+  const type = (event.type || '').toLowerCase();
+  const detail = (event.detail || '').toLowerCase();
+  if (type === 'card') {
+    if (detail.includes('red') || detail.includes('second')) return '🟥';
+    return '🟨';
   }
-  if (t === 'subst' || t === 'substitution') return '🔁';
-  if (t === 'var') return '📺';
-  return '•';
+  return EVENT_ICONS[type] || '📋';
 }
 
-export default function EventTicker({ events, myPlayerApiIds, myTeamApiIds }) {
+export default function EventTicker({ events, myPlayerApiIds = [], myTeamApiIds = [] }) {
+  const myPlayers = new Set(myPlayerApiIds);
+  const myTeams = new Set(myTeamApiIds);
+
   if (!events || events.length === 0) {
-    return <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: 8 }}>No events yet</div>;
+    return <p className="text-muted text-sm">No events yet.</p>;
   }
 
-  const sorted = [...events].sort((a, b) => (a.minute || 0) - (b.minute || 0));
-
   return (
-    <div className="event-ticker">
-      {sorted.map(event => {
-        const isMinePlayer = myPlayerApiIds?.includes(event.player_api_id);
-        const isMineTeam = myTeamApiIds?.includes(event.team_api_id);
-        const isMine = isMinePlayer || isMineTeam;
+    <ul className="event-ticker">
+      {events.map((event, idx) => {
+        const isMine = myPlayers.has(event.player_api_id) || myTeams.has(event.team_api_id);
         return (
-          <div key={event.id} className={`event-item${isMine ? ' event-item--mine' : ''}`}>
-            <span className="event-minute">{event.minute ? `${event.minute}'` : ''}</span>
-            <span>{eventIcon(event.type, event.detail)}</span>
-            <span style={{ flex: 1 }}>
-              {event.player_name || event.player_api_id || ''}
-              {event.detail ? ` (${event.detail})` : ''}
-            </span>
-          </div>
+          <li key={event.id || idx} className={`event-ticker__item ${isMine ? 'event-ticker__item--mine' : ''}`}>
+            <span>{getIcon(event)}</span>
+            <span className="event-ticker__minute">{event.minute}&apos;</span>
+            <span style={{ flex: 1 }}>{event.detail || event.type}</span>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
