@@ -1,62 +1,41 @@
-import React from 'react'
+import React from 'react';
 
-export default function HostDashboard({ players = [], picks = [], currentPicker, onPoke, teams = [] }) {
-  const teamMap = {}
-  teams.forEach((t) => { teamMap[t.api_id] = t })
-
-  const picksByPlayer = {}
-  picks.forEach((pick) => {
-    if (!picksByPlayer[pick.player_id]) picksByPlayer[pick.player_id] = []
-    picksByPlayer[pick.player_id].push(pick)
-  })
-
-  const totalPicks = players.length * 8
-  const progress = totalPicks > 0 ? (picks.length / totalPicks) * 100 : 0
+export default function HostDashboard({ players, picks, currentPicker, onPoke, teams, totalPicks }) {
+  const progress = picks ? picks.length : 0;
+  const total = totalPicks || (players ? players.length * 8 : 0);
+  const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
 
   return (
-    <div style={{ padding: '1rem' }}>
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-semibold">Draft Progress</span>
-          <span className="text-sm text-muted">{picks.length}/{totalPicks}</span>
+    <div className="host-dashboard">
+      <div className="host-dashboard__title">🎛 Host Dashboard</div>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--muted)', marginBottom: '0.25rem' }}>
+          <span>Draft Progress</span>
+          <span>{progress}/{total} picks ({pct}%)</span>
         </div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        <div className="draft-progress">
+          <div className="draft-progress__fill" style={{ width: `${pct}%` }} />
         </div>
       </div>
-
-      <div className="flex flex-col gap-2">
-        {players.map((player) => {
-          const isCurrent = currentPicker && currentPicker.id === player.id
-          const playerPicks = picksByPlayer[player.id] || []
-          return (
-            <div key={player.id} className={`host-player-row${isCurrent ? ' current' : ''}`}>
-              <div style={{ flex: 1 }}>
-                <div className="flex items-center gap-2">
-                  <span className={`font-semibold text-sm${isCurrent ? ' text-gold' : ''}`}>
-                    {player.name}
-                  </span>
-                  {isCurrent && (
-                    <span className="badge badge-gold" style={{ fontSize: '0.5rem' }}>PICKING</span>
-                  )}
-                </div>
-                <div className="text-xs text-muted mt-1">
-                  {playerPicks.length} teams picked
-                </div>
-              </div>
-              {isCurrent && onPoke && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => onPoke(player)}
-                  style={{ fontSize: '0.75rem' }}
-                >
-                  👋 Poke
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      {currentPicker && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '0.15rem' }}>Currently Picking</div>
+            <div style={{ fontWeight: 700, color: 'var(--gold-soft)' }}>{currentPicker.name}</div>
+          </div>
+          {onPoke && (
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={() => onPoke(currentPicker)}
+            >
+              👋 Poke
+            </button>
+          )}
+        </div>
+      )}
+      {!currentPicker && (
+        <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Draft complete or not started.</div>
+      )}
     </div>
-  )
+  );
 }

@@ -1,44 +1,31 @@
-/**
- * Returns the full snake order of [playerIndex, ...] for each pick slot.
- * Snake: round 1 goes 0,1,2,...,n-1 and round 2 goes n-1,...,1,0, etc.
- */
 export function getSnakeOrder(players, totalRounds) {
-  const n = players.length;
   const order = [];
-  for (let round = 0; round < totalRounds; round++) {
-    if (round % 2 === 0) {
-      for (let i = 0; i < n; i++) order.push(i);
-    } else {
-      for (let i = n - 1; i >= 0; i--) order.push(i);
+  const n = players.length;
+  for (let r = 0; r < totalRounds; r++) {
+    const isReverse = r % 2 === 1;
+    for (let i = 0; i < n; i++) {
+      order.push(isReverse ? n - 1 - i : i);
     }
   }
   return order;
 }
 
-/**
- * Returns the index in players array of who should pick next.
- */
-export function getCurrentPicker(picks, players, totalRounds) {
-  if (!players || players.length === 0) return 0;
-  const order = getSnakeOrder(players, totalRounds);
-  const pickCount = picks ? picks.length : 0;
-  if (pickCount >= order.length) return -1; // draft complete
-  return order[pickCount];
+export function getCurrentPicker(picks, players, currentPickNumber) {
+  if (!players.length) return null;
+  const n = players.length;
+  const pickIndex = currentPickNumber - 1;
+  const roundIndex = Math.floor(pickIndex / n);
+  const posInRound = pickIndex % n;
+  const isReverse = roundIndex % 2 === 1;
+  const playerIndex = isReverse ? n - 1 - posInRound : posInRound;
+  return players[playerIndex] || null;
 }
 
-/**
- * Returns which pot number a given pick falls into.
- * potSize: number of teams per pot (default 12)
- * Picks are 1-indexed.
- */
-export function getPotFromPickNumber(pickNumber, potSize = 12) {
-  return Math.ceil(pickNumber / potSize);
+export function getPotFromPickNumber(pickNumber, numPlayers) {
+  const roundIndex = Math.floor((pickNumber - 1) / numPlayers);
+  return Math.floor(roundIndex / 2) + 1;
 }
 
-/**
- * Returns which round (1-indexed) a pick number belongs to,
- * given the number of players in the draft.
- */
 export function getRoundFromPickNumber(pickNumber, numPlayers) {
-  return Math.ceil(pickNumber / numPlayers);
+  return Math.floor((pickNumber - 1) / numPlayers) + 1;
 }

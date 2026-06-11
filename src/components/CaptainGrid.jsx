@@ -1,65 +1,38 @@
-import React from 'react';
+import React from 'react'
 
-export default function CaptainGrid({ playerPicks, captainPickId, onSelectCaptain, allPlayers, picks }) {
-  // playerPicks = array of player_pick rows for this user
-  // picks = array of draft_picks for this user (to get team name)
-  // allPlayers = map api_id → player
-  // captainPickId = currently selected captain player_pick_id
-
-  if (!playerPicks || playerPicks.length === 0) {
-    return (
-      <div className="empty-state">
-        <span className="text-muted">No players selected yet.</span>
-      </div>
-    );
-  }
-
-  const pickMap = {};
-  if (picks) picks.forEach((p) => { pickMap[p.id] = p; });
+export default function CaptainGrid({ playerPicks = [], captainPickId, onSelectCaptain, players = [] }) {
+  const playerMap = {}
+  players.forEach((p) => { playerMap[p.api_id] = p })
 
   return (
-    <div className="captain-grid">
-      {playerPicks.map((pp) => {
-        const player = allPlayers && allPlayers[pp.player_api_id];
-        const isSelected = captainPickId === pp.id;
-        const draftPick = pickMap[pp.draft_pick_id];
-
-        return (
-          <div
-            key={pp.id}
-            className={`captain-card${isSelected ? ' captain-card--selected' : ''}`}
-            onClick={() => onSelectCaptain(pp.id)}
-          >
-            {isSelected && (
-              <div style={{ position: 'absolute', top: 8, right: 8 }}>
-                <div className="captain-badge">C</div>
+    <div>
+      <div className="section-label" style={{ padding: '0 1rem', marginBottom: '0.75rem' }}>
+        Select Your Captain — 2× All Points
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(5rem, 1fr))', gap: '0.5rem', padding: '0 1rem' }}>
+        {playerPicks.map((pp) => {
+          const p = playerMap[pp.player_api_id] || {}
+          const isSelected = captainPickId === pp.id
+          return (
+            <div
+              key={pp.id}
+              className={`captain-card${isSelected ? ' selected' : ''}`}
+              onClick={() => onSelectCaptain && onSelectCaptain(pp)}
+            >
+              {isSelected && <div className="captain-badge">2×</div>}
+              <img
+                src={p.photo_url || 'https://media.api-sports.io/football/players/0.png'}
+                alt={p.name}
+                onError={(e) => { e.target.src = 'https://via.placeholder.com/48?text=?' }}
+              />
+              <div className="player-name">{p.name || `#${pp.player_api_id}`}</div>
+              <div style={{ fontSize: '0.5625rem', color: 'var(--muted)', marginTop: '0.125rem' }}>
+                {pp.position}
               </div>
-            )}
-            {player?.photo_url ? (
-              <img src={player.photo_url} alt={player.name} onError={(e) => { e.target.style.display = 'none'; }} />
-            ) : (
-              <div style={{
-                width: 52, height: 52, borderRadius: '50%', background: 'var(--navy-3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem',
-              }}>
-                👤
-              </div>
-            )}
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, lineHeight: 1.2 }}>
-              {player?.name || `Player #${pp.player_api_id}`}
             </div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <span className="badge badge-muted">{pp.position}</span>
-              {draftPick && (
-                <span className="badge badge-gold" style={{ fontSize: '0.6rem' }}>P{draftPick.pot}</span>
-              )}
-            </div>
-            {isSelected && (
-              <div style={{ fontSize: '0.7rem', color: 'var(--gold)', fontWeight: 700 }}>2× CAPTAIN</div>
-            )}
-          </div>
-        );
-      })}
+          )
+        })}
+      </div>
     </div>
-  );
+  )
 }

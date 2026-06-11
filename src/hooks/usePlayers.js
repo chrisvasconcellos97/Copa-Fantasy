@@ -7,44 +7,21 @@ export function usePlayers(gameId) {
 
   useEffect(() => {
     if (!gameId) return;
+    let sub;
 
-    let cancelled = false;
-    supabase
-      .from('game_players')
-      .select('*')
-      .eq('game_id', gameId)
-      .order('joined_at', { ascending: true })
-      .then(({ data }) => {
-        if (!cancelled) {
-          setPlayers(data || []);
-          setLoading(false);
-        }
-      });
+    async function load() {
+      const { data } = await supabase.from('game_players').select('*').eq('game_id', gameId).order('draft_order', { nullsFirst: false });
+      setPlayers(data || []);
+      setLoading(false);
+    }
+    load();
 
-    const channel = supabase
-      .channel(`players-${gameId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'game_players',
-        filter: `game_id=eq.${gameId}`,
-      }, (payload) => {
-        setPlayers(prev => [...prev, payload.new]);
-      })
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'game_players',
-        filter: `game_id=eq.${gameId}`,
-      }, (payload) => {
-        setPlayers(prev => prev.filter(p => p.id !== payload.old.id));
-      })
+    sub = supabase.channel('players-' + gameId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_players', filter: 'game_id=eq.' + gameId },
+        () => load())
       .subscribe();
 
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(sub); };
   }, [gameId]);
 
   return { players, loading };

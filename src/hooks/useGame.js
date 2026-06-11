@@ -1,24 +1,28 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 export function useGame(gameId) {
-  const [game, setGame] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [game, setGame] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!gameId) return
-    setLoading(true)
-    supabase.from('games').select('*').eq('id', gameId).single()
-      .then(({ data }) => { setGame(data); setLoading(false) })
+    if (!gameId) return;
+    let sub;
 
-    const channel = supabase.channel('game-' + gameId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: 'id=eq.' + gameId }, payload => {
-        setGame(payload.new)
-      })
-      .subscribe()
+    async function load() {
+      const { data } = await supabase.from('games').select('*').eq('id', gameId).single();
+      setGame(data);
+      setLoading(false);
+    }
+    load();
 
-    return () => { supabase.removeChannel(channel) }
-  }, [gameId])
+    sub = supabase.channel('game-' + gameId)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: 'id=eq.' + gameId },
+        (p) => setGame(p.new))
+      .subscribe();
 
-  return { game, loading }
+    return () => { supabase.removeChannel(sub); };
+  }, [gameId]);
+
+  return { game, loading };
 }

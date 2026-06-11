@@ -1,28 +1,32 @@
-import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 export function useNotifications(myPlayerId) {
-  const [unread, setUnread] = useState([])
+  const [unread, setUnread] = useState([]);
 
   useEffect(() => {
-    if (!myPlayerId) return
+    if (!myPlayerId) return;
+    let sub;
 
-    supabase.from('notifications').select('*').eq('game_player_id', myPlayerId).eq('read', false)
-      .then(({ data }) => setUnread(data || []))
+    async function load() {
+      const { data } = await supabase.from('notifications').select('*')
+        .eq('game_player_id', myPlayerId).eq('read', false).order('created_at', { ascending: false });
+      setUnread(data || []);
+    }
+    load();
 
-    const channel = supabase.channel('notifs-' + myPlayerId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'game_player_id=eq.' + myPlayerId }, payload => {
-        setUnread(prev => [...prev, payload.new])
-      })
-      .subscribe()
+    sub = supabase.channel('notifs-' + myPlayerId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'game_player_id=eq.' + myPlayerId },
+        (p) => setUnread(prev => [p.new, ...prev]))
+      .subscribe();
 
-    return () => { supabase.removeChannel(channel) }
-  }, [myPlayerId])
+    return () => { supabase.removeChannel(sub); };
+  }, [myPlayerId]);
 
-  const dismiss = useCallback(async (id) => {
-    await supabase.from('notifications').update({ read: true }).eq('id', id)
-    setUnread(prev => prev.filter(n => n.id !== id))
-  }, [])
+  async function markRead(notifId) {
+    await supabase.from('notifications').update({ read: true }).eq('id', notifId);
+    setUnread(prev => prev.filter(n => n.id !== notifId));
+  }
 
-  return { unread, dismiss }
+  return { unread, markRead };
 }

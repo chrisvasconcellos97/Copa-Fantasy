@@ -1,25 +1,66 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 export function useScores(gameId) {
-  const [scores, setScores] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!gameId) return
-    setLoading(true)
-    supabase.from('user_scores').select('*').eq('game_id', gameId).order('total_points', { ascending: false })
-      .then(({ data }) => { setScores(data || []); setLoading(false) })
+    if (!gameId) return;
 
-    const channel = supabase.channel('scores-' + gameId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'user_scores', filter: 'game_id=eq.' + gameId }, () => {
-        supabase.from('user_scores').select('*').eq('game_id', gameId).order('total_points', { ascending: false })
-          .then(({ data }) => setScores(data || []))
+    let cancelled = false;
+    supabase
+      .from('user_scores')
+      .select('*')
+      .eq('game_id', gameId)
+      .order('total_points', { ascending: false })
+      .then(({ data }) => {
+        if (!cancelled) {
+          setScores(data || []);
+          setLoading(false);
+        }
+      });
+
+    const channel = supabase
+      .channel(`scores-${gameId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'user_scores',
+        filter: `game_id=eq.${gameId}`,
+      }, () => {
+        // Reload all scores on any update
+        supabase
+          .from('user_scores')
+          .select('*')
+          .eq('game_id', gameId)
+          .order('total_points', { ascending: false })
+          .then(({ data }) => {
+            if (!cancelled) setScores(data || []);
+          });
       })
-      .subscribe()
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'user_scores',
+        filter: `game_id=eq.${gameId}`,
+      }, () => {
+        supabase
+          .from('user_scores')
+          .select('*')
+          .eq('game_id', gameId)
+          .order('total_points', { ascending: false })
+          .then(({ data }) => {
+            if (!cancelled) setScores(data || []);
+          });
+      })
+      .subscribe();
 
-    return () => { supabase.removeChannel(channel) }
-  }, [gameId])
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [gameId]);
 
-  return { scores, loading }
+  return { scores, loading };
 }
