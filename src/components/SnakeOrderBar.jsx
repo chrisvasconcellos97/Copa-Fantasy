@@ -1,20 +1,27 @@
-export default function SnakeOrderBar({ players = [], currentPickerIndex, myPlayerId }) {
+export default function SnakeOrderBar({ players, currentPickerIndex, myPlayerId }) {
+  if (!players || players.length === 0) return null;
+
   return (
     <div className="snake-bar">
-      <span className="text-xs text-muted" style={{ flexShrink: 0 }}>Draft Order:</span>
+      <span className="label" style={{ whiteSpace: 'nowrap', marginRight: '0.25rem' }}>Draft order:</span>
       {players.map((player, i) => {
         const isCurrent = i === currentPickerIndex;
-        const isMine = player.id === myPlayerId;
-        const classes = [
-          'snake-chip',
-          isCurrent ? 'current' : '',
-          !isCurrent && isMine ? 'mine' : '',
-        ].filter(Boolean).join(' ');
+        const isMe = player.id === myPlayerId;
         return (
-          <div key={player.id} className={classes}>
+          <span
+            key={player.id}
+            className={[
+              'snake-chip',
+              isCurrent ? 'snake-chip--current' : '',
+              isMe && !isCurrent ? 'snake-chip--me' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {isCurrent && <span>⏳</span>}
             {player.player_name}
-            {isMine && !isCurrent && ' (you)'}
-          </div>
+            {isMe && <span style={{ fontSize: '0.7em' }}> (you)</span>}
+          </span>
         );
       })}
     </div>

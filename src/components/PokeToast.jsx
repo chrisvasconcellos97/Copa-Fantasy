@@ -2,15 +2,24 @@ import { useEffect } from 'react';
 
 export default function PokeToast({ message, onDismiss }) {
   useEffect(() => {
-    const timer = setTimeout(onDismiss, 6000);
+    const timer = setTimeout(() => {
+      onDismiss && onDismiss();
+    }, 6000);
     return () => clearTimeout(timer);
-  }, [onDismiss]);
+  }, [message, onDismiss]);
+
+  if (!message) return null;
 
   return (
-    <div className="poke-toast" onClick={onDismiss}>
-      <span className="text-xl">👆</span>
-      <span className="font-bold">{message || 'You have been poked!'}</span>
-      <span className="text-muted text-sm" style={{ marginLeft: '8px' }}>Click to dismiss</span>
+    <div className="poke-toast" onClick={onDismiss} style={{ cursor: 'pointer' }}>
+      <span style={{ fontSize: '1.3rem' }}>👉</span>
+      <span>{message || "It's your turn to pick!"}</span>
+      <span
+        style={{ marginLeft: 'auto', fontSize: '0.75rem', opacity: 0.7 }}
+        onClick={onDismiss}
+      >
+        ✕
+      </span>
     </div>
   );
 }

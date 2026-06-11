@@ -1,44 +1,41 @@
-export default function SquadBuilder({ picks = [], teams = [], myPlayerId }) {
-  const myPicks = picks.filter((p) => p.game_player_id === myPlayerId);
-  const total = 8;
-  const filled = myPicks.length;
-  const pct = Math.round((filled / total) * 100);
+export default function SquadBuilder({ picks, teams, myPlayerId }) {
+  const myPicks = picks
+    ? picks.filter((p) => p.game_player_id === myPlayerId)
+    : [];
 
-  const slots = Array.from({ length: total }, (_, i) => myPicks[i] || null);
-
-  function getTeam(teamApiId) {
-    return teams.find((t) => String(t.api_id) === String(teamApiId)) || null;
+  const teamMap = {};
+  if (teams) {
+    teams.forEach((t) => { teamMap[t.api_id] = t; });
   }
 
-  const fallback = (name) =>
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'T')}&background=2a2a3a&color=e8e8f0&size=36`;
+  const slots = Array.from({ length: 8 }, (_, i) => myPicks[i] || null);
+  const filled = myPicks.length;
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm text-muted">My Teams</span>
-        <span className="text-sm font-semibold text-gold">{filled}/{total}</span>
+    <div className="squad-builder">
+      <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
+        <span className="label">My Teams</span>
+        <span className="label text-gold">{filled}/8</span>
       </div>
-      <div className="progress-bar mb-3">
-        <div className="progress-fill" style={{ width: `${pct}%` }} />
+      <div className="progress-bar" style={{ marginBottom: '0.75rem' }}>
+        <div className="progress-fill" style={{ width: `${(filled / 8) * 100}%` }} />
       </div>
-      <div className="squad-grid">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
         {slots.map((pick, i) => {
-          const team = pick ? getTeam(pick.team_api_id) : null;
+          const team = pick ? teamMap[pick.team_api_id] : null;
           return (
-            <div key={i} className={`squad-slot ${pick ? 'filled' : ''}`}>
+            <div key={i} className={`squad-slot${team ? ' squad-slot--filled' : ''}`}>
               {team ? (
                 <>
-                  <img
-                    src={team.logo_url || fallback(team.name)}
-                    alt={team.name}
-                    className="squad-slot-logo"
-                    onError={(e) => { e.target.src = fallback(team.name); }}
-                  />
-                  <span className="squad-slot-name">{team.name}</span>
+                  {team.logo_url ? (
+                    <img className="squad-slot__logo" src={team.logo_url} alt={team.name} />
+                  ) : (
+                    <div style={{ fontSize: '1.2rem' }}>🏴</div>
+                  )}
+                  <span className="squad-slot__name">{team.name}</span>
                 </>
               ) : (
-                <span style={{ fontSize: '1.2rem', color: 'var(--border)' }}>+</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-dark)' }}>Slot {i + 1}</span>
               )}
             </div>
           );

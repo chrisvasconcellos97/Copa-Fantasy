@@ -1,29 +1,21 @@
 export default function ConfirmBar({ selectedTeam, onConfirm, onCancel }) {
-  const visible = !!selectedTeam;
-  const fallback = selectedTeam
-    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedTeam.name || 'T')}&background=2a2a3a&color=e8e8f0&size=36`
-    : '';
+  if (!selectedTeam) return null;
 
   return (
-    <div className={`confirm-bar ${visible ? 'visible' : ''}`}>
-      <div className="confirm-bar-info">
-        {selectedTeam && (
-          <>
-            <img
-              src={selectedTeam.logo_url || fallback}
-              alt={selectedTeam.name}
-              className="confirm-bar-logo"
-              onError={(e) => { e.target.src = fallback; }}
-            />
-            <span className="confirm-bar-name">{selectedTeam.name}</span>
-          </>
+    <div className="confirm-bar">
+      <div className="confirm-bar__team">
+        {selectedTeam.logo_url ? (
+          <img className="confirm-bar__logo" src={selectedTeam.logo_url} alt={selectedTeam.name} />
+        ) : (
+          <span style={{ fontSize: '1.6rem' }}>🏴</span>
         )}
+        <span className="confirm-bar__name">{selectedTeam.name}</span>
       </div>
-      <button className="btn btn-outline btn-sm" onClick={onCancel}>
-        Cancel
+      <button className="btn btn-primary" onClick={onConfirm}>
+        ✓ Confirm Pick
       </button>
-      <button className="btn btn-gold btn-sm" onClick={onConfirm} disabled={!selectedTeam}>
-        Confirm Pick
+      <button className="btn btn-secondary" onClick={onCancel}>
+        Cancel
       </button>
     </div>
   );

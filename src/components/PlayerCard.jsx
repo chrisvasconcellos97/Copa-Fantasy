@@ -1,33 +1,37 @@
 import { normalizePosition } from '../lib/constants';
 
-export default function PlayerCard({ player, selected, onClick, showPosition = true, disabled = false }) {
-  const pos = normalizePosition(player?.position);
-  const fallbackPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(player?.name || 'P')}&background=2a2a3a&color=e8e8f0&size=52&rounded=true`;
+const POS_COLORS = {
+  GK: '#f59e0b',
+  DEF: '#3b82f6',
+  MID: '#22c55e',
+  FWD: '#ef4444',
+};
 
-  const classes = [
-    'player-card',
-    selected ? 'selected' : '',
-    disabled ? 'disabled' : '',
-  ].filter(Boolean).join(' ');
+export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
+  const pos = normalizePosition(player.position);
+  const posColor = POS_COLORS[pos] || '#8888aa';
 
   return (
     <div
-      className={classes}
-      onClick={() => !disabled && onClick && onClick(player)}
-      title={player?.name}
+      className={`player-card${selected ? ' player-card--selected' : ''}`}
+      onClick={() => onClick && onClick(player)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick && onClick(player)}
     >
-      <img
-        src={player?.photo_url || fallbackPhoto}
-        alt={player?.name}
-        className="player-card-photo"
-        onError={(e) => { e.target.src = fallbackPhoto; }}
-      />
-      <div className="player-card-name">{player?.name}</div>
-      {player?.number && (
-        <div className="player-card-number">#{player.number}</div>
+      {player.photo_url ? (
+        <img className="player-card__photo" src={player.photo_url} alt={player.name} loading="lazy" />
+      ) : (
+        <div className="player-card__photo-fallback">👤</div>
       )}
-      {showPosition && pos !== 'default' && (
-        <span className={`position-badge pos-${pos}`}>{pos}</span>
+      <span className="player-card__name">{player.name}</span>
+      {showPosition && (
+        <span className="player-card__pos" style={{ background: posColor + '22', color: posColor }}>
+          {pos}
+        </span>
+      )}
+      {player.number != null && (
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>#{player.number}</span>
       )}
     </div>
   );

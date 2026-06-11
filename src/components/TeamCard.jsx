@@ -1,32 +1,31 @@
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
   const classes = [
     'team-card',
-    selected ? 'selected' : '',
-    taken ? 'taken' : '',
-    disabled && !selected ? 'disabled' : '',
-  ].filter(Boolean).join(' ');
+    selected ? 'team-card--selected' : '',
+    taken ? 'team-card--taken' : '',
+    disabled && !taken ? 'team-card--disabled' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   function handleClick() {
-    if (disabled || taken) return;
+    if (taken || disabled) return;
     onClick && onClick(team);
   }
 
-  const fallbackLogo = `https://ui-avatars.com/api/?name=${encodeURIComponent(team?.name || 'T')}&background=2a2a3a&color=e8e8f0&size=56`;
-
   return (
-    <div className={classes} onClick={handleClick} title={taken ? `Picked by ${takenBy}` : team?.name}>
-      <img
-        src={team?.logo_url || fallbackLogo}
-        alt={team?.name}
-        className="team-card-logo"
-        onError={(e) => { e.target.src = fallbackLogo; }}
-      />
-      <div className="team-card-name">{team?.name}</div>
-      {team?.pot && (
-        <div className="team-card-pot">Pot {team.pot}</div>
+    <div className={classes} onClick={handleClick} role="button" tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}>
+      {team.logo_url ? (
+        <img className="team-card__logo" src={team.logo_url} alt={team.name} loading="lazy" />
+      ) : (
+        <div className="team-card__logo-fallback">🏴</div>
       )}
-      {taken && takenBy && (
-        <div className="team-card-taken-overlay">{takenBy}</div>
+      <span className="team-card__name">{team.name}</span>
+      {taken && (
+        <div className="team-card__taken-overlay">
+          {takenBy || 'Taken'}
+        </div>
       )}
     </div>
   );

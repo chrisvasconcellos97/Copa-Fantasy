@@ -1,35 +1,33 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 export default function CopyCode({ code }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
+  async function handleCopy() {
     try {
       await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
+      // fallback
       const el = document.createElement('textarea');
       el.value = code;
       document.body.appendChild(el);
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
-  };
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
-    <div className="copy-code-wrap" onClick={handleCopy} role="button" tabIndex={0}
-      onKeyDown={e => e.key === 'Enter' && handleCopy()}>
-      <div className="copy-code-label text-muted text-sm mb-1">Join Code</div>
-      <div className="copy-code-value text-gold font-bold" style={{ fontSize: '2.5rem', letterSpacing: '0.15em' }}>
+    <div className="copy-code-box">
+      <div className="copy-code-text" onClick={handleCopy} title="Click to copy">
         {code}
       </div>
-      <div className={`copy-code-hint text-sm ${copied ? 'text-gold' : 'text-muted'}`}>
-        {copied ? '✓ Copied!' : 'Click to copy'}
-      </div>
+      <button className="btn btn-outline btn-sm" onClick={handleCopy}>
+        {copied ? '✓ Copied!' : '📋 Copy Code'}
+      </button>
+      <p className="text-xs text-muted">Share this code with your friends to join</p>
     </div>
   );
 }
