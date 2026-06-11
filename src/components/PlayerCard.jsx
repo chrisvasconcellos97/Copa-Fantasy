@@ -1,29 +1,54 @@
 import React from 'react';
-import { normalizePosition } from '../lib/constants.js';
+import { normalizePosition } from '../lib/constants';
 
-export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
+const POSITION_COLORS = {
+  GK: '#f59e0b',
+  DEF: '#3b82f6',
+  MID: '#22c55e',
+  FWD: '#ef4444',
+};
+
+export default function PlayerCard({ player, selected, onClick, showPosition }) {
   const pos = normalizePosition(player.position);
-  const posClass = `pos-${pos}`;
+  const posColor = POSITION_COLORS[pos] || '#8888aa';
 
   return (
     <div
-      className={`player-card${selected ? ' selected' : ''}`}
+      className={`player-card${selected ? ' player-card--selected' : ''}`}
       onClick={() => onClick && onClick(player)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onClick && onClick(player)}
     >
-      <img
-        className="player-photo"
-        src={player.photo_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name)}&background=2a2a3a&color=e8e8f0&size=64`}
-        alt={player.name}
-        onError={(e) => {
-          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(player.name)}&background=2a2a3a&color=e8e8f0&size=64`;
-        }}
-      />
-      {player.number && (
-        <span className="player-number">#{player.number}</span>
+      {player.photo_url ? (
+        <img
+          className="player-card__photo"
+          src={player.photo_url}
+          alt={player.name}
+          loading="lazy"
+          onError={(e) => {
+            e.target.style.display = 'none';
+            e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
+          }}
+        />
+      ) : (
+        <div className="player-card__photo-placeholder">👤</div>
       )}
-      <span className="player-name">{player.name}</span>
+      <span className="player-card__name">{player.name}</span>
+      {player.number && (
+        <span className="player-card__number">#{player.number}</span>
+      )}
       {showPosition && (
-        <span className={`position-badge ${posClass}`}>{pos}</span>
+        <span
+          className="badge"
+          style={{
+            background: `${posColor}22`,
+            color: posColor,
+            border: `1px solid ${posColor}44`,
+          }}
+        >
+          {pos}
+        </span>
       )}
     </div>
   );
