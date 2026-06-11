@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabase.js';
 import { getSession } from '../lib/session.js';
 import FixtureCard from '../components/FixtureCard.jsx';
 import EventTicker from '../components/EventTicker.jsx';
+import Mascot from '../components/Mascot.jsx';
+import { useLiveSync } from '../hooks/useLiveSync.js';
 
 function groupByDate(fixtures) {
   const groups = {};
   for (const f of fixtures) {
-    const date = f.kickoff_at ? new Date(f.kickoff_at).toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Unknown Date';
+    const date = f.kickoff ? new Date(f.kickoff).toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Unknown Date';
     if (!groups[date]) groups[date] = [];
     groups[date].push(f);
   }
@@ -23,6 +25,8 @@ export default function MatchCenterView() {
   const [expandedFixture, setExpandedFixture] = useState(null);
   const session = getSession();
 
+  useLiveSync();
+
   useEffect(() => {
     let mounted = true;
 
@@ -30,7 +34,7 @@ export default function MatchCenterView() {
       const { data } = await supabase
         .from('fixtures')
         .select('*')
-        .order('kickoff_at', { ascending: true });
+        .order('kickoff', { ascending: true });
       if (mounted) {
         setFixtures(data || []);
         setLoading(false);
@@ -107,9 +111,10 @@ export default function MatchCenterView() {
       {loading ? (
         <div className="loading"><div className="spinner" /></div>
       ) : fixtures.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state__icon">📅</div>
-          <div className="empty-state__text">No fixtures scheduled yet</div>
+        <div className="empty-state" style={{ paddingTop: 60, textAlign: 'center' }}>
+          <Mascot pose="waiting" size={100} />
+          <p style={{ marginTop: 16, fontWeight: 600 }}>No matches yet</p>
+          <p className="text-muted text-sm mt-8">Fixtures will appear here once the tournament kicks off</p>
         </div>
       ) : (
         Object.entries(grouped).map(([date, dayFixtures]) => (

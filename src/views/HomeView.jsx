@@ -55,6 +55,7 @@ export default function HomeView() {
         hostToken,
         gameId: game.id,
       });
+      localStorage.setItem('cf_game_id', game.id);
 
       navigate(`/lobby/${game.id}`);
     } catch (err) {
@@ -99,6 +100,7 @@ export default function HomeView() {
         hostToken: null,
         gameId: game.id,
       });
+      localStorage.setItem('cf_game_id', game.id);
 
       navigate(`/lobby/${game.id}`);
     } catch (err) {
