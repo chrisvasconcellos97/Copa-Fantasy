@@ -1,34 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase.js';
 
 export function useNotifications(myPlayerId) {
   const [unread, setUnread] = useState(0);
   const [showPoke, setShowPoke] = useState(false);
   const [pokeMessage, setPokeMessage] = useState('');
-
-  const dismissPoke = useCallback(() => {
-    setShowPoke(false);
-    setPokeMessage('');
-  }, []);
+  const channelRef = useRef(null);
 
   useEffect(() => {
     if (!myPlayerId) return;
 
-    let isMounted = true;
+    let cancelled = false;
 
-    async function fetchUnread() {
+    async function loadUnread() {
       const { count } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .eq('game_player_id', myPlayerId)
         .eq('read', false);
-      if (isMounted) setUnread(count || 0);
+      if (!cancelled) setUnread(count || 0);
     }
 
-    fetchUnread();
+    loadUnread();
 
     const channel = supabase
-      .channel(`notifications-${myPlayerId}`)
+      .channel(`notif-${myPlayerId}`)
       .on(
         'postgres_changes',
         {
@@ -38,29 +34,35 @@ export function useNotifications(myPlayerId) {
           filter: `game_player_id=eq.${myPlayerId}`,
         },
         async (payload) => {
-          if (!isMounted) return;
+          if (cancelled) return;
           const notif = payload.new;
           setUnread((prev) => prev + 1);
-
           if (notif.type === 'poke') {
             setPokeMessage(notif.message || "It's your turn to pick!");
             setShowPoke(true);
           }
-
           // Mark as read
           await supabase
             .from('notifications')
             .update({ read: true })
             .eq('id', notif.id);
+          if (!cancelled) setUnread((prev) => Math.max(0, prev - 1));
         }
       )
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
-      isMounted = false;
+      cancelled = true;
       supabase.removeChannel(channel);
     };
   }, [myPlayerId]);
+
+  function dismissPoke() {
+    setShowPoke(false);
+    setPokeMessage('');
+  }
 
   return { unread, showPoke, dismissPoke, pokeMessage };
 }
