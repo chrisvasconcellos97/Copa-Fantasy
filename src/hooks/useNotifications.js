@@ -1,65 +1,28 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
 
-export function useNotifications(gameId, myPlayerId, onNewNotification) {
-  const [unread, setUnread] = useState([]);
-
-  const markRead = useCallback(async (ids) => {
-    if (!ids || ids.length === 0) return;
-    await supabase
-      .from('notifications')
-      .update({ read: true })
-      .in('id', ids);
-    setUnread((prev) => prev.filter((n) => !ids.includes(n.id)));
-  }, []);
+export function useNotifications(myPlayerId) {
+  const [unread, setUnread] = useState([])
 
   useEffect(() => {
-    if (!gameId || !myPlayerId) return;
+    if (!myPlayerId) return
 
-    let cancelled = false;
+    supabase.from('notifications').select('*').eq('game_player_id', myPlayerId).eq('read', false)
+      .then(({ data }) => setUnread(data || []))
 
-    async function fetchUnread() {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('game_id', gameId)
-        .eq('game_player_id', myPlayerId)
-        .eq('read', false)
-        .order('created_at', { ascending: false });
+    const channel = supabase.channel('notifs-' + myPlayerId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'game_player_id=eq.' + myPlayerId }, payload => {
+        setUnread(prev => [...prev, payload.new])
+      })
+      .subscribe()
 
-      if (!cancelled && data) {
-        setUnread(data);
-      }
-    }
+    return () => { supabase.removeChannel(channel) }
+  }, [myPlayerId])
 
-    fetchUnread();
+  const dismiss = useCallback(async (id) => {
+    await supabase.from('notifications').update({ read: true }).eq('id', id)
+    setUnread(prev => prev.filter(n => n.id !== id))
+  }, [])
 
-    const channel = supabase
-      .channel(`notifications:${gameId}:${myPlayerId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `game_player_id=eq.${myPlayerId}`,
-        },
-        (payload) => {
-          if (!cancelled) {
-            setUnread((prev) => [payload.new, ...prev]);
-            if (onNewNotification) {
-              onNewNotification(payload.new);
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [gameId, myPlayerId, onNewNotification]);
-
-  return { unread, markRead };
+  return { unread, dismiss }
 }

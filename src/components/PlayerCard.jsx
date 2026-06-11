@@ -1,41 +1,34 @@
-import React from 'react'
+import React from 'react';
 
-const POS_CLASS = { FWD: 'pos-fwd', MID: 'pos-mid', DEF: 'pos-def', GK: 'pos-gk' }
+const POS_CLASS = { FWD: 'badge-fwd', MID: 'badge-mid', DEF: 'badge-def', GK: 'badge-muted' };
 
-export default function PlayerCard({ player, selected, onClick, showPosition = true, disabled = false }) {
-  const handleClick = () => {
-    if (!disabled && onClick) onClick(player)
-  }
+export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
+  const cls = [
+    'player-card',
+    selected ? 'player-card--selected' : '',
+  ].filter(Boolean).join(' ');
+
+  const pos = player.position || 'MID';
 
   return (
-    <div
-      className={`player-card${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}`}
-      onClick={handleClick}
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
-    >
-      <img
-        src={player.photo_url || 'https://media.api-sports.io/football/players/0.png'}
-        alt={player.name}
-        onError={(e) => { e.target.src = 'https://via.placeholder.com/40?text=?' }}
-      />
-      <div className="player-info">
-        <div className="player-name">{player.name}</div>
-        {showPosition && (
-          <div className="player-meta">
-            <span className={`badge ${POS_CLASS[player.position] || 'badge-navy'}`}>
-              {player.position}
-            </span>
-            {player.number && (
-              <span className="text-xs text-muted">#{player.number}</span>
-            )}
-          </div>
-        )}
-      </div>
-      {selected && (
-        <span style={{ color: 'var(--gold)', fontSize: '1rem' }}>✓</span>
+    <div className={cls} onClick={() => onClick && onClick(player)}>
+      {player.photo_url ? (
+        <img
+          className="player-card__photo"
+          src={player.photo_url}
+          alt={player.name}
+          loading="lazy"
+          onError={(e) => { e.target.src = ''; e.target.style.display = 'none'; }}
+        />
+      ) : (
+        <div className="player-card__photo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+          👤
+        </div>
+      )}
+      <span className="player-card__name truncate">{player.name}</span>
+      {showPosition && (
+        <span className={`badge ${POS_CLASS[pos] || 'badge-muted'}`}>{pos}</span>
       )}
     </div>
-  )
+  );
 }

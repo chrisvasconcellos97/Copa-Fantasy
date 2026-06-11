@@ -1,53 +1,53 @@
 export const TEAM_POINTS = {
-  group_win: 3, group_draw: 1, group_loss: 0,
-  r32: 5, r16: 8, qf: 13, sf: 21, final: 34, champion: 55,
+  group_win: 3,
+  group_draw: 1,
+  group_loss: 0,
+  r32_win: 5,
+  qf_win: 8,
+  sf_win: 13,
+  final_win: 21,
+  champion: 34,
 };
+
 export const PLAYER_POINTS = {
-  goal: 6, assist: 4, clean_sheet: 3,
-  yellow_card: -1, red_card: -3, motm: 5,
+  goal: 6,
+  assist: 4,
+  clean_sheet_gk: 10,
+  clean_sheet_def: 6,
+  yellow_card: -1,
+  red_card: -3,
+  motm: 5,
+  top_scorer: 15,
+  golden_boot: 20,
 };
-export function computePlayerScore(events = []) {
-  return events.reduce((total, ev) => total + (PLAYER_POINTS[ev.type] || 0), 0);
-}
 
 /**
- * Computes the total fantasy score for a player's draft data.
- * playerData = {
- *   teamApiIds: string[],
- *   teamResults: { team_api_id, result_type }[],
- *   playerApiIds: string[],
- *   playerResults: { player_api_id, event_type, count }[],
- *   captainPlayerApiId: string | null,
- * }
+ * Given an array of match_events for a player, compute total fantasy points.
+ * Each event: { type, detail }
  */
-export function computeScoreForPlayer(playerData) {
-  const {
-    teamApiIds = [],
-    teamResults = [],
-    playerApiIds = [],
-    playerResults = [],
-    captainPlayerApiId = null,
-  } = playerData;
-
+export function computePlayerScore(events) {
   let total = 0;
-
-  for (const result of teamResults) {
-    if (teamApiIds.includes(String(result.team_api_id))) {
-      const pts = TEAM_POINTS[result.result_type] ?? 0;
-      total += pts;
+  if (!events) return total;
+  for (const ev of events) {
+    const t = ev.type?.toLowerCase();
+    const d = ev.detail?.toLowerCase() || '';
+    if (t === 'goal' || (t === 'goal scored')) {
+      total += PLAYER_POINTS.goal;
+    } else if (t === 'assist') {
+      total += PLAYER_POINTS.assist;
+    } else if (t === 'card') {
+      if (d.includes('yellow')) total += PLAYER_POINTS.yellow_card;
+      else if (d.includes('red')) total += PLAYER_POINTS.red_card;
+    } else if (t === 'clean_sheet') {
+      if (d === 'gk') total += PLAYER_POINTS.clean_sheet_gk;
+      else if (d === 'def') total += PLAYER_POINTS.clean_sheet_def;
+    } else if (t === 'motm') {
+      total += PLAYER_POINTS.motm;
+    } else if (t === 'top_scorer') {
+      total += PLAYER_POINTS.top_scorer;
+    } else if (t === 'golden_boot') {
+      total += PLAYER_POINTS.golden_boot;
     }
   }
-
-  for (const result of playerResults) {
-    if (playerApiIds.includes(String(result.player_api_id))) {
-      const pts = (PLAYER_POINTS[result.event_type] ?? 0) * (result.count ?? 1);
-      let playerPts = pts;
-      if (captainPlayerApiId && String(result.player_api_id) === String(captainPlayerApiId)) {
-        playerPts *= 2;
-      }
-      total += playerPts;
-    }
-  }
-
   return total;
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase';
 
 export function usePlayers(gameId) {
   const [players, setPlayers] = useState([]);
@@ -7,23 +7,44 @@ export function usePlayers(gameId) {
 
   useEffect(() => {
     if (!gameId) return;
-    setLoading(true);
-    supabase.from('game_players').select('*').eq('game_id', gameId)
-      .then(({ data }) => { setPlayers(data || []); setLoading(false); });
 
-    const channel = supabase.channel(`players-${gameId}`)
+    let cancelled = false;
+    supabase
+      .from('game_players')
+      .select('*')
+      .eq('game_id', gameId)
+      .order('joined_at', { ascending: true })
+      .then(({ data }) => {
+        if (!cancelled) {
+          setPlayers(data || []);
+          setLoading(false);
+        }
+      });
+
+    const channel = supabase
+      .channel(`players-${gameId}`)
       .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}`
-      }, payload => setPlayers(prev => [...prev, payload.new]))
+        event: 'INSERT',
+        schema: 'public',
+        table: 'game_players',
+        filter: `game_id=eq.${gameId}`,
+      }, (payload) => {
+        setPlayers(prev => [...prev, payload.new]);
+      })
       .on('postgres_changes', {
-        event: 'DELETE', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}`
-      }, payload => setPlayers(prev => prev.filter(p => p.id !== payload.old.id)))
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'game_players', filter: `game_id=eq.${gameId}`
-      }, payload => setPlayers(prev => prev.map(p => p.id === payload.new.id ? payload.new : p)))
+        event: 'DELETE',
+        schema: 'public',
+        table: 'game_players',
+        filter: `game_id=eq.${gameId}`,
+      }, (payload) => {
+        setPlayers(prev => prev.filter(p => p.id !== payload.old.id));
+      })
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [gameId]);
 
   return { players, loading };

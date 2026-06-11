@@ -1,34 +1,26 @@
-const TOKEN_KEY = 'copa_fantasy_token';
-const NAME_KEY = 'copa_fantasy_name';
-const GAME_KEY = 'copa_fantasy_game_id';
-
-function generateToken() {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-}
+import { v4 as uuidv4 } from 'uuid'
 
 export function getOrCreateToken() {
-  let token = localStorage.getItem(TOKEN_KEY);
+  let token = localStorage.getItem('cf_session_token')
   if (!token) {
-    token = generateToken();
-    localStorage.setItem(TOKEN_KEY, token);
+    token = uuidv4()
+    localStorage.setItem('cf_session_token', token)
   }
-  return token;
+  return token
 }
 
 export function setPlayerName(name) {
-  localStorage.setItem(NAME_KEY, name);
+  localStorage.setItem('cf_player_name', name)
 }
 
 export function getPlayerName() {
-  return localStorage.getItem(NAME_KEY) || '';
+  return localStorage.getItem('cf_player_name') || ''
 }
 
 export function setGameId(id) {
-  localStorage.setItem(GAME_KEY, id);
+  localStorage.setItem('cf_game_id', id)
 }
 
 export function getGameId() {
-  return localStorage.getItem(GAME_KEY) || null;
+  return localStorage.getItem('cf_game_id')
 }

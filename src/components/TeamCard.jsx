@@ -1,47 +1,40 @@
-import React from 'react'
+import React from 'react';
 
 export default function TeamCard({ team, selected, taken, takenBy, onClick, disabled }) {
-  const handleClick = () => {
-    if (!taken && !disabled && onClick) onClick(team)
+  const cls = [
+    'team-card',
+    selected ? 'team-card--selected' : '',
+    taken ? 'team-card--taken' : '',
+    disabled && !selected ? 'team-card--disabled' : '',
+  ].filter(Boolean).join(' ');
+
+  function handleClick() {
+    if (disabled || taken) return;
+    if (onClick) onClick(team);
   }
 
-  const potClass = team.pot ? `pot-${team.pot}` : 'badge-navy'
-
   return (
-    <div
-      className={`team-card${selected ? ' selected' : ''}${taken ? ' taken' : ''}${disabled && !taken ? ' disabled' : ''}`}
-      onClick={handleClick}
-      role="button"
-      tabIndex={taken || disabled ? -1 : 0}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
-    >
+    <div className={cls} onClick={handleClick} title={team.name}>
       {team.logo_url ? (
-        <img src={team.logo_url} alt={team.name} />
+        <img
+          className="team-card__logo"
+          src={team.logo_url}
+          alt={team.name}
+          loading="lazy"
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
       ) : (
-        <div style={{ width: '2.5rem', height: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>
+        <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
           ⚽
         </div>
       )}
-      <span className="team-name">{team.name}</span>
+      <span className="team-card__name">{team.name}</span>
       {team.pot && (
-        <span className={`badge ${potClass}`} style={{ fontSize: '0.5625rem' }}>
-          Pot {team.pot}
-        </span>
+        <span className="badge badge-muted" style={{ fontSize: '0.6rem' }}>Pot {team.pot}</span>
       )}
       {taken && takenBy && (
-        <span className="taken-by">picked by {takenBy}</span>
-      )}
-      {selected && (
-        <div style={{
-          position: 'absolute',
-          top: '0.25rem',
-          right: '0.25rem',
-          width: '0.75rem',
-          height: '0.75rem',
-          borderRadius: '50%',
-          background: 'var(--gold)',
-        }} />
+        <span className="team-card__taken-by">{takenBy}</span>
       )}
     </div>
-  )
+  );
 }

@@ -1,36 +1,26 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 
 export default function SnakeOrderBar({ players, currentPickerIndex, myPlayerId }) {
-  const activeRef = useRef(null);
-
-  useEffect(() => {
-    if (activeRef.current) {
-      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  }, [currentPickerIndex]);
-
-  if (!players || players.length === 0) return null;
-
   return (
     <div className="snake-bar">
-      {players.map((player, idx) => {
+      {(players || []).map((player, idx) => {
         const isActive = idx === currentPickerIndex;
         const isMe = player.id === myPlayerId;
-        let cls = 'snake-bar__item';
-        if (isActive) cls += ' snake-bar__item--active';
-        if (isMe && !isActive) cls += ' snake-bar__item--me';
+        const cls = [
+          'snake-bar__item',
+          isActive ? 'snake-bar__item--active' : '',
+          isMe && !isActive ? 'snake-bar__item--me' : '',
+        ].filter(Boolean).join(' ');
 
         return (
-          <div
-            key={player.id}
-            className={cls}
-            ref={isActive ? activeRef : null}
-          >
-            <div className="snake-bar__avatar" style={isActive ? { background: 'var(--gold)', color: '#000' } : isMe ? { background: 'rgba(61,220,132,0.2)', color: 'var(--success)' } : {}}>
-              {player.name ? player.name[0].toUpperCase() : '?'}
-            </div>
-            <span className="truncate" style={{ maxWidth: 56 }}>{player.name}</span>
-            {isActive && <span style={{ fontSize: '0.6rem', color: 'var(--gold)' }}>▲ NOW</span>}
+          <div key={player.id} className={cls}>
+            <span className="snake-bar__name" style={{ color: isActive ? 'var(--gold-soft)' : isMe ? 'var(--success)' : 'var(--text)' }}>
+              {player.name}
+              {isMe ? ' (you)' : ''}
+            </span>
+            {isActive && (
+              <span className="snake-bar__pick" style={{ color: 'var(--gold)' }}>Picking…</span>
+            )}
           </div>
         );
       })}

@@ -1,44 +1,56 @@
 import React from 'react';
 
-function fmt(kickoff) {
-  if (!kickoff) return '';
-  const d = new Date(kickoff);
+function formatKickoff(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function FixtureCard({ fixture, myTeamApiIds = [], isLive }) {
-  const mine = myTeamApiIds.includes(fixture.home_team_api_id) || myTeamApiIds.includes(fixture.away_team_api_id);
-  const live = isLive || ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'].includes(fixture.status_short);
-  const finished = ['FT', 'AET', 'PEN'].includes(fixture.status_short);
+  const homeMine = myTeamApiIds.includes(fixture.home_team_api_id);
+  const awayMine = myTeamApiIds.includes(fixture.away_team_api_id);
+  const anyMine = homeMine || awayMine;
 
-  const cls = [
-    'fixture-card',
-    mine ? 'fixture-card--mine' : '',
-    live ? 'fixture-card--live' : '',
-  ].filter(Boolean).join(' ');
+  let cls = 'fixture-card';
+  if (isLive) cls += ' fixture-card--live';
+  else if (anyMine) cls += ' fixture-card--mine';
+
+  const statusShort = fixture.status_short || '';
+  const isFinished = ['FT', 'AET', 'PEN'].includes(statusShort);
+  const isNS = statusShort === 'NS';
 
   return (
     <div className={cls}>
-      <div className="fixture-card__teams">
-        <div className="fixture-card__team">
-          <span style={{ fontSize: '0.85rem' }}>{fixture.home_team_name || fixture.home_team_api_id}</span>
-        </div>
-        <div className="fixture-card__score">
-          {finished || live
-            ? `${fixture.home_goals ?? 0} - ${fixture.away_goals ?? 0}`
-            : 'vs'
-          }
-        </div>
-        <div className="fixture-card__team">
-          <span style={{ fontSize: '0.85rem' }}>{fixture.away_team_name || fixture.away_team_api_id}</span>
+      <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+        <span className="text-xs text-muted">{fixture.round || ''}</span>
+        <div className="flex items-center gap-2">
+          {isLive && <span className="status-pill status-pill--live">LIVE {fixture.elapsed ? `${fixture.elapsed}'` : ''}</span>}
+          {isFinished && <span className="badge badge-muted">FT</span>}
+          {isNS && <span className="text-xs text-muted">{formatKickoff(fixture.kickoff)}</span>}
+          {anyMine && <span className="badge badge-gold">MY TEAM</span>}
         </div>
       </div>
-      <div className="fixture-card__meta">
-        {live && <span className="badge badge-live">LIVE {fixture.elapsed ? `${fixture.elapsed}'` : ''}</span>}
-        {finished && <span className="pill">FT</span>}
-        {!live && !finished && <span>{fmt(fixture.kickoff)}</span>}
-        {fixture.round && <span>· {fixture.round}</span>}
-        {mine && <span style={{ color: 'var(--gold-soft)' }}>⭐ Your team</span>}
+
+      <div className="fixture-teams">
+        <div className="fixture-team" style={homeMine ? { color: 'var(--gold)' } : {}}>
+          {fixture.home_logo && (
+            <img src={fixture.home_logo} alt="" onError={(e) => { e.target.style.display = 'none'; }} />
+          )}
+          <span className="fixture-team__name">{fixture.home_name || `Team ${fixture.home_team_api_id}`}</span>
+        </div>
+
+        <div className="fixture-score">
+          {(isLive || isFinished)
+            ? `${fixture.home_goals ?? 0} - ${fixture.away_goals ?? 0}`
+            : 'vs'}
+        </div>
+
+        <div className="fixture-team" style={awayMine ? { color: 'var(--gold)' } : {}}>
+          {fixture.away_logo && (
+            <img src={fixture.away_logo} alt="" onError={(e) => { e.target.style.display = 'none'; }} />
+          )}
+          <span className="fixture-team__name">{fixture.away_name || `Team ${fixture.away_team_api_id}`}</span>
+        </div>
       </div>
     </div>
   );
