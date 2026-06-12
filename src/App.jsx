@@ -1,22 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useNavigate } from 'react-router-dom';
 import HomeView from './views/HomeView';
 import LobbyView from './views/LobbyView';
 import DraftView from './views/DraftView';
 import MatchCenterView from './views/MatchCenterView';
 import LeaderboardView from './views/LeaderboardView';
 import PointsModal from './components/PointsModal';
-import { getSession } from './lib/session';
+import { getSession, clearSession } from './lib/session';
 
 function Nav() {
   const [session, setSession] = useState(() => getSession());
   const [showPoints, setShowPoints] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     function onStorage() { setSession(getSession()); }
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
+
+  function handleLeave() {
+    if (!confirm('Leave this game? You can rejoin later using the game code and your name.')) return;
+    clearSession();
+    localStorage.removeItem('cf_game_id');
+    setSession(null);
+    navigate('/');
+  }
 
   return (
     <>
@@ -47,6 +56,15 @@ function Nav() {
             >
               Leaderboard
             </NavLink>
+          )}
+          {session?.gameId && (
+            <button
+              onClick={handleLeave}
+              className="nav-link"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontWeight: 600 }}
+            >
+              Leave
+            </button>
           )}
         </div>
       </nav>
