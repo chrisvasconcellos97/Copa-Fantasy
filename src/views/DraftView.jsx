@@ -516,11 +516,16 @@ export default function DraftView() {
                     setActiveTeamTab(team.api_id);
                     loadTeamPlayers(team.api_id);
                   }}
+                  style={savedCount === 3 ? {
+                    borderColor: 'var(--success)',
+                    color: activeTeamTab === team.api_id ? undefined : 'var(--success)',
+                    background: activeTeamTab === team.api_id ? undefined : 'rgba(34,197,94,0.08)',
+                  } : {}}
                 >
-                  {team.name}
-                  {savedCount > 0 && (
+                  {savedCount === 3 ? '✓ ' : ''}{team.name}
+                  {savedCount > 0 && savedCount < 3 && (
                     <span
-                      className="badge badge-success"
+                      className="badge badge-muted"
                       style={{ marginLeft: 6, fontSize: '0.65rem' }}
                     >
                       {savedCount}/3
