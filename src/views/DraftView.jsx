@@ -115,7 +115,8 @@ export default function DraftView() {
 
     let squad;
     if (data && data.length > 0) {
-      squad = data;
+      // Normalize is_top (snake_case from DB) to isTop
+      squad = data.map(p => ({ ...p, isTop: p.is_top || p.isTop || false }));
     } else {
       const team = teams.find(t => String(t.api_id) === String(teamApiId) || t.api_id === teamApiId);
       const raw = team ? getSquadForTeam(team.name) : null;
@@ -243,17 +244,27 @@ export default function DraftView() {
     if (error) alert('Error: ' + error.message);
   }
 
-  // Auto-pick: best available player per position (prefers isTop, then first listed)
+  // Auto-pick: guarantee 1 star player (isTop), fill remaining slots by position
   function handleAutoPick(teamApiId) {
     const squad = teamPlayers[teamApiId] || [];
     const positions = ['GK', 'DEF', 'MID', 'FWD'];
     const picked = [];
+    const pickedIds = new Set();
+
+    // First: pick 1 star player (highest-rated position order)
+    for (const pos of positions) {
+      const star = squad.filter(p => normalizePosition(p.position) === pos && p.isTop)[0];
+      if (star) { picked.push(star.api_id); pickedIds.add(star.api_id); break; }
+    }
+
+    // Fill remaining 2 slots: prefer stars, then fall back to any available by position
     for (const pos of positions) {
       if (picked.length >= 3) break;
-      const candidates = squad.filter(p => normalizePosition(p.position) === pos);
+      const candidates = squad.filter(p => normalizePosition(p.position) === pos && !pickedIds.has(p.api_id));
       const best = candidates.find(p => p.isTop) || candidates[0];
-      if (best) picked.push(best.api_id);
+      if (best) { picked.push(best.api_id); pickedIds.add(best.api_id); }
     }
+
     setSelectedPlayerIds(prev => ({ ...prev, [teamApiId]: picked }));
   }
 
