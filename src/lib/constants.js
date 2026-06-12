@@ -16,7 +16,6 @@ export const SCORING = {
   CLEAN_SHEET_DEF: 6,
   YELLOW_CARD: -1,
   RED_CARD: -3,
-  MOTM: 5,
   TOP_SCORER: 15,
   GOLDEN_BOOT: 20,
 };
@@ -34,7 +33,6 @@ export const RESULT_TYPES = [
 ];
 
 export const BONUS_TYPES = [
-  { value: 'motm', label: 'Man of the Match', points: 5 },
   { value: 'top_scorer', label: 'Top Scorer (Round)', points: 15 },
   { value: 'golden_boot', label: 'Golden Boot', points: 20 },
   { value: 'custom', label: 'Custom Bonus', points: 0 },
