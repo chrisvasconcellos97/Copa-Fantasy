@@ -181,6 +181,7 @@ export default function DraftView() {
         game_id: gameId,
         game_player_id: myPlayerId,
         pick_number: pickNumber,
+        pot: selectedTeam.pot,
         team_code: selectedTeam.code || selectedTeam.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6),
         team_api_id: isRealTeam ? selectedTeam.api_id : null,
       });
