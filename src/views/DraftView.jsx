@@ -499,8 +499,9 @@ export default function DraftView() {
       <div style={{ textAlign: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--gold)' }}>
           {game?.status === 'drafting_teams' && '🏳️ Team Draft'}
-          {game?.status === 'selecting_players' && '👥 Pick Your Players'}
-          {game?.status === 'selecting_captain' && '👑 Choose Your Captain'}
+          {(game?.status === 'selecting_players' || game?.status === 'selecting_captain') && (
+            savedPlayerPicks.length >= TOTAL_ROUNDS * 3 ? '👑 Choose Your Captain' : '👥 Pick Your Players'
+          )}
         </h1>
       </div>
 
@@ -756,20 +757,18 @@ export default function DraftView() {
                         return `${sel.length}/3${posPicked.length ? ' — ' + posPicked.join(', ') : ''}`;
                       })()}
                     </span>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {(() => {
+                        const dp = picks.find(p => p.game_player_id === myPlayerId && String(p.team_api_id) === String(activeTeamTab));
+                        const saved = dp && savedPlayerPicks.filter(pp => pp.draft_pick_id === dp.id).length === 3;
+                        return saved ? <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span> : null;
+                      })()}
                       <button
                         className="btn btn-sm"
                         style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
                         onClick={() => handleAutoPick(activeTeamTab)}
                       >
                         ⚡ Auto Pick
-                      </button>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => handleSavePlayerPicks(activeTeamTab)}
-                        disabled={(selectedPlayerIds[activeTeamTab] || []).length === 0}
-                      >
-                        Save
                       </button>
                     </div>
                   </div>
