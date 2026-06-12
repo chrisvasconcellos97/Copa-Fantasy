@@ -6,7 +6,7 @@ import { useDraft } from '../hooks/useDraft';
 import { useNotifications } from '../hooks/useNotifications';
 import { getSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
-import { FALLBACK_POTS } from '../lib/constants';
+import { FALLBACK_POTS, normalizePosition } from '../lib/constants';
 import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
 import { getSquadForTeam } from '../lib/wcSquads';
 import TeamCard from '../components/TeamCard';
@@ -221,16 +221,28 @@ export default function DraftView() {
     if (error) alert('Error: ' + error.message);
   }
 
-  // Toggle player selection for player picks phase
+  // Toggle player selection — one per position (GK / DEF / MID / FWD)
   function togglePlayerPick(teamApiId, playerApiId) {
+    const squad = teamPlayers[teamApiId] || [];
+    const player = squad.find(p => p.api_id === playerApiId);
+    const playerPos = normalizePosition(player?.position);
+
     setSelectedPlayerIds((prev) => {
       const current = prev[teamApiId] || [];
+      // Deselect if already selected
       if (current.includes(playerApiId)) {
-        return { ...prev, [teamApiId]: current.filter((id) => id !== playerApiId) };
+        return { ...prev, [teamApiId]: current.filter(id => id !== playerApiId) };
       }
-      if (current.length >= 3) {
-        return { ...prev, [teamApiId]: [...current.slice(1), playerApiId] };
+      // Replace the existing pick for this position if one exists
+      const samePosPick = current.find(id => {
+        const p = squad.find(s => s.api_id === id);
+        return normalizePosition(p?.position) === playerPos;
+      });
+      if (samePosPick) {
+        return { ...prev, [teamApiId]: current.map(id => id === samePosPick ? playerApiId : id) };
       }
+      // Don't exceed 3 total
+      if (current.length >= 3) return prev;
       return { ...prev, [teamApiId]: [...current, playerApiId] };
     });
   }
@@ -325,7 +337,7 @@ export default function DraftView() {
       const savedCount = draftPick ? savedPlayerPicks.filter(p => p.draft_pick_id === draftPick.id).length : 0;
       if (!activeTeamTab) return { pose: 'idle', message: "Tap a team tab above to see its squad. You need to pick 3 players from each of your 8 teams." };
       if (savedCount === 3) return { pose: 'celebrating', message: "Nice picks! Tap another team tab to keep going. Come back anytime to change your selections before the host moves on." };
-      return { pose: 'thinking', message: `Pick 3 players for this team. Stars ⭐ highlight the squad's standout players — great picks to start with!` };
+      return { pose: 'thinking', message: `Pick 3 players — max one per position (GK / DEF / MID / FWD). Stars ⭐ highlight each team's standout players.` };
     }
     if (game?.status === 'selecting_captain') {
       if (captainSaved) return { pose: 'celebrating', message: "Captain locked in! They'll earn double points all tournament. Sit tight for the host to kick things off." };
@@ -535,7 +547,12 @@ export default function DraftView() {
                 <>
                   <div className="flex items-center justify-between mb-12">
                     <span className="text-muted text-sm">
-                      Select 3 players ({(selectedPlayerIds[activeTeamTab] || []).length}/3)
+                      {(() => {
+                        const sel = selectedPlayerIds[activeTeamTab] || [];
+                        const squad = teamPlayers[activeTeamTab] || [];
+                        const posPicked = sel.map(id => normalizePosition(squad.find(p => p.api_id === id)?.position)).filter(Boolean);
+                        return `Pick 3 (max 1 per position) — ${sel.length}/3 selected${posPicked.length ? ': ' + posPicked.join(', ') : ''}`;
+                      })()}
                     </span>
                     <button
                       className="btn btn-primary btn-sm"
