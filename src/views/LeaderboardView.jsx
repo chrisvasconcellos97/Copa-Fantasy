@@ -155,6 +155,28 @@ export default function LeaderboardView() {
     }
   }
 
+  async function handleRecalculate() {
+    setHostLoading(true);
+    setHostMsg('');
+    try {
+      const res = await fetch('https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1/calculate-scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtYXNhYXB3Ymh4dWV1aHh4cWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTI1OTgsImV4cCI6MjA5NjM4ODU5OH0.pAdFowezL_l7QLLA0Y4KgyGAcDbYtx0OppA_id1agdY' },
+        body: JSON.stringify({ game_id: gameId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setHostMsg(`✓ Scores recalculated from ${data.fixtures_processed} fixtures — ${data.players_updated} players updated`);
+      } else {
+        setHostMsg(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setHostMsg(`Error: ${err.message}`);
+    } finally {
+      setHostLoading(false);
+    }
+  }
+
   async function handleOverride(gpId, newTotal) {
     setHostLoading(true);
     try {
@@ -324,6 +346,16 @@ export default function LeaderboardView() {
               {hostMsg}
             </div>
           )}
+
+          {/* Recalculate from fixtures */}
+          <div style={{ marginBottom: 20 }}>
+            <button className="btn btn-primary btn-full" onClick={handleRecalculate} disabled={hostLoading}>
+              🔄 Recalculate Scores from Fixtures
+            </button>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 6 }}>
+              Automatically awards points for all completed matches based on each player's drafted teams.
+            </p>
+          </div>
 
           {/* Add Team Result */}
           <div style={{ marginBottom: 20 }}>

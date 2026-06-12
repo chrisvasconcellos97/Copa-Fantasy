@@ -4,10 +4,11 @@ export const SCORING = {
   GROUP_DRAW: 1,
   GROUP_LOSS: 0,
   R32_WIN: 5,
-  QF_WIN: 8,
-  SF_WIN: 13,
-  FINAL_WIN: 21,
-  CHAMPION: 34,
+  R16_WIN: 8,
+  QF_WIN: 13,
+  SF_WIN: 21,
+  FINAL_WIN: 34,
+  CHAMPION: 55,
   // Player events
   GOAL: 6,
   ASSIST: 4,
@@ -25,10 +26,11 @@ export const RESULT_TYPES = [
   { value: 'group_draw', label: 'Group Stage Draw', points: 1 },
   { value: 'group_loss', label: 'Group Stage Loss', points: 0 },
   { value: 'r32_win', label: 'Round of 32 Win', points: 5 },
-  { value: 'qf_win', label: 'Quarter-Final Win', points: 8 },
-  { value: 'sf_win', label: 'Semi-Final Win', points: 13 },
-  { value: 'final_win', label: 'Final Win', points: 21 },
-  { value: 'champion', label: 'Champion Bonus', points: 34 },
+  { value: 'r16_win', label: 'Round of 16 Win', points: 8 },
+  { value: 'qf_win', label: 'Quarter-Final Win', points: 13 },
+  { value: 'sf_win', label: 'Semi-Final Win', points: 21 },
+  { value: 'final_win', label: 'Final Win', points: 34 },
+  { value: 'champion', label: 'Champion Bonus', points: 55 },
 ];
 
 export const BONUS_TYPES = [
