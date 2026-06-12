@@ -20,6 +20,8 @@ export default function HomeView() {
   const [createName, setCreateName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState('');
+  const [rejoinCode, setRejoinCode] = useState('');
+  const [rejoinName, setRejoinName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -60,6 +62,56 @@ export default function HomeView() {
       navigate(`/lobby/${game.id}`);
     } catch (err) {
       setError(err.message || 'Failed to create game');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRejoin(e) {
+    e.preventDefault();
+    if (!rejoinName.trim() || !rejoinCode.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const code = rejoinCode.trim().toUpperCase();
+
+      // Find game
+      const { data: game, error: gameErr } = await supabase
+        .from('games')
+        .select('*')
+        .eq('join_code', code)
+        .single();
+      if (gameErr || !game) throw new Error('Game not found. Check the code and try again.');
+
+      // Find player (case-insensitive)
+      const { data: players, error: playerErr } = await supabase
+        .from('game_players')
+        .select('*')
+        .eq('game_id', game.id)
+        .ilike('player_name', rejoinName.trim());
+      if (playerErr) throw playerErr;
+      if (!players || players.length === 0) throw new Error('No player with that name found in this game');
+
+      const gamePlayer = players[0];
+      const hostToken = gamePlayer.is_host ? game.host_token : null;
+
+      setSession({
+        playerId: gamePlayer.id,
+        playerName: gamePlayer.player_name,
+        hostToken,
+        gameId: game.id,
+      });
+      localStorage.setItem('cf_game_id', game.id);
+
+      if (game.status === 'lobby') {
+        navigate(`/lobby/${game.id}`);
+      } else if (['drafting_teams', 'selecting_players', 'selecting_captain'].includes(game.status)) {
+        navigate(`/draft/${game.id}`);
+      } else {
+        navigate(`/leaderboard/${game.id}`);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to rejoin game');
     } finally {
       setLoading(false);
     }
@@ -129,7 +181,7 @@ export default function HomeView() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: '1fr 1fr 1fr',
           gap: 8,
           background: 'var(--card-bg)',
           padding: 6,
@@ -159,6 +211,17 @@ export default function HomeView() {
           }}
         >
           Join Game
+        </button>
+        <button
+          className="btn"
+          onClick={() => { setTab('rejoin'); setError(''); }}
+          style={{
+            background: tab === 'rejoin' ? 'var(--gold)' : 'transparent',
+            color: tab === 'rejoin' ? '#0a0a0f' : 'var(--text-muted)',
+            fontWeight: 700,
+          }}
+        >
+          Rejoin Game
         </button>
       </div>
 
@@ -196,6 +259,51 @@ export default function HomeView() {
               <li>Manage scores on the leaderboard</li>
               <li>Advance draft phases</li>
             </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Rejoin form */}
+      {tab === 'rejoin' && (
+        <div className="card">
+          <h2 style={{ fontWeight: 700, fontSize: '1.2rem', marginBottom: 20 }}>Rejoin a Game</h2>
+          <form onSubmit={handleRejoin}>
+            <div className="form-group">
+              <label className="input-label">Game Code</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="XXXXXX"
+                value={rejoinCode}
+                onChange={(e) => setRejoinCode(e.target.value.toUpperCase())}
+                maxLength={6}
+                style={{ textTransform: 'uppercase', letterSpacing: '0.15em', fontSize: '1.2rem', fontWeight: 700 }}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label className="input-label">Your Name</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="Enter your name"
+                value={rejoinName}
+                onChange={(e) => setRejoinName(e.target.value)}
+                maxLength={32}
+                required
+              />
+            </div>
+            {error && <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: 12 }}>{error}</div>}
+            <button
+              type="submit"
+              className="btn btn-primary btn-full btn-lg"
+              disabled={loading || !rejoinCode.trim() || !rejoinName.trim()}
+            >
+              {loading ? 'Rejoining...' : '🔄 Rejoin Game'}
+            </button>
+          </form>
+          <div className="mt-16" style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.6 }}>
+            Lost your session? Enter the game code and the name you originally used to get back in.
           </div>
         </div>
       )}
