@@ -11,13 +11,14 @@ const POS_COLORS = {
 export default function PlayerCard({ player, selected, onClick, showPosition = true }) {
   const pos = normalizePosition(player?.position);
   const posStyle = POS_COLORS[pos] || POS_COLORS.MID;
+  const isTop = player?.isTop;
 
   return (
     <div
       onClick={() => onClick && onClick(player)}
       style={{
-        background: 'var(--card-bg)',
-        border: `2px solid ${selected ? 'var(--gold)' : 'var(--border)'}`,
+        background: isTop ? 'rgba(255,215,0,0.06)' : 'var(--card-bg)',
+        border: `2px solid ${selected ? 'var(--gold)' : isTop ? 'rgba(255,215,0,0.4)' : 'var(--border)'}`,
         borderRadius: 'var(--radius)',
         padding: '12px 8px',
         display: 'flex',
@@ -26,11 +27,34 @@ export default function PlayerCard({ player, selected, onClick, showPosition = t
         gap: '6px',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 0.2s ease',
-        boxShadow: selected ? '0 0 16px rgba(255,215,0,0.35)' : 'none',
+        boxShadow: selected ? '0 0 16px rgba(255,215,0,0.35)' : isTop ? '0 0 8px rgba(255,215,0,0.15)' : 'none',
         userSelect: 'none',
         position: 'relative',
       }}
     >
+      {/* Top 10 star badge */}
+      {isTop && (
+        <div style={{
+          position: 'absolute',
+          top: 4,
+          right: 4,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 1,
+        }}>
+          <span style={{ fontSize: '0.75rem', lineHeight: 1 }}>⭐</span>
+          {player.rating && (
+            <span style={{
+              fontSize: '0.6rem',
+              fontWeight: 700,
+              color: 'var(--gold)',
+              lineHeight: 1,
+            }}>{player.rating}</span>
+          )}
+        </div>
+      )}
+
       {/* Photo */}
       <div
         style={{
