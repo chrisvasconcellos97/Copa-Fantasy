@@ -72,7 +72,7 @@ export default function PlayerCard({ player, selected, onClick, showPosition = t
       >
         {player?.photo_url ? (
           <img
-            src={player.photo_url}
+            src={player.photo_url?.includes('cdn.sofifa.net') ? `https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1/img-proxy?url=${encodeURIComponent(player.photo_url)}` : player.photo_url}
             alt={player.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
