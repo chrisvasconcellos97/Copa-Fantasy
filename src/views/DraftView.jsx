@@ -85,6 +85,8 @@ export default function DraftView() {
   const session = getSession();
   const myPlayerId = session?.playerId;
   const isHost = session?.hostToken && game?.host_token === session?.hostToken;
+  // isObserver: host is viewing the linked group they're not a player in
+  const isObserver = isHost && players.length > 0 && !players.find(p => p.id === myPlayerId);
 
   const { showPoke, dismissPoke, pokeMessage } = useNotifications(myPlayerId);
 
@@ -511,6 +513,32 @@ export default function DraftView() {
   return (
     <div className="page" style={{ paddingBottom: 100 }}>
       {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
+
+      {/* Group switcher for host */}
+      {isHost && game?.linked_game_id && !isObserver && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button
+            className="btn btn-sm"
+            style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--info)', border: '1px solid rgba(59,130,246,0.3)', fontSize: '0.8rem' }}
+            onClick={() => navigate(`/draft/${game.linked_game_id}`)}
+          >
+            👁 View Group B →
+          </button>
+        </div>
+      )}
+      {/* Group B observer banner — shown when host is viewing linked game without a player record */}
+      {isObserver && (
+        <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--info)', fontWeight: 600 }}>👁 Viewing Group B</span>
+          <button
+            className="btn btn-sm"
+            style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+            onClick={() => navigate(-1)}
+          >
+            ← Back to Group A
+          </button>
+        </div>
+      )}
 
       {/* Phase header */}
       <div style={{ textAlign: 'center', marginBottom: 16 }}>

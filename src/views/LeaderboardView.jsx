@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useScores } from '../hooks/useScores.js';
 import { usePlayers } from '../hooks/usePlayers.js';
 import { useDraft } from '../hooks/useDraft.js';
@@ -12,11 +12,18 @@ import { getSquadForTeam } from '../lib/wcSquads.js';
 
 export default function LeaderboardView() {
   const { gameId } = useParams();
+  const navigate = useNavigate();
   const { scores, loading: scoresLoading } = useScores(gameId);
   const { players } = usePlayers(gameId);
   const { picks } = useDraft(gameId);
   const session = getSession();
   const isHost = Boolean(session?.hostToken);
+  const [linkedGameId, setLinkedGameId] = useState(null);
+
+  useEffect(() => {
+    supabase.from('games').select('linked_game_id').eq('id', gameId).single()
+      .then(({ data }) => { if (data?.linked_game_id) setLinkedGameId(data.linked_game_id); });
+  }, [gameId]);
 
   const [teams, setTeams] = useState([]);
   const [allPlayers, setAllPlayers] = useState([]);
@@ -245,7 +252,18 @@ export default function LeaderboardView() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Leaderboard</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Leaderboard</h1>
+        {isHost && linkedGameId && (
+          <button
+            className="btn btn-sm"
+            style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--info)', border: '1px solid rgba(59,130,246,0.3)' }}
+            onClick={() => navigate(`/leaderboard/${linkedGameId}`)}
+          >
+            👁 Group B →
+          </button>
+        )}
+      </div>
 
       {/* My Squad & Subs — shown to logged-in users */}
       {myId && myDraftPicks.length > 0 && (
