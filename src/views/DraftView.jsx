@@ -214,6 +214,28 @@ export default function DraftView() {
     };
     const next = transitions[game.status];
     if (!next) return;
+
+    // Guard: before moving to captain selection, ensure every player has
+    // saved 3 picks for each of their 8 teams (8 × 3 = 24 per player)
+    if (game.status === 'selecting_players') {
+      const { data: allPicks } = await supabase
+        .from('player_picks')
+        .select('game_player_id')
+        .eq('game_id', gameId);
+
+      const countByPlayer = {};
+      for (const row of (allPicks || [])) {
+        countByPlayer[row.game_player_id] = (countByPlayer[row.game_player_id] || 0) + 1;
+      }
+      const expected = TOTAL_ROUNDS * 3; // 8 teams × 3 players = 24
+      const incomplete = players.filter(p => (countByPlayer[p.id] || 0) < expected);
+      if (incomplete.length > 0) {
+        const names = incomplete.map(p => p.player_name).join(', ');
+        alert(`Not everyone has finished picking their players yet.\n\nStill incomplete: ${names}\n\nAsk them to pick 3 players for each of their 8 teams before advancing.`);
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from('games')
       .update({ status: next })
