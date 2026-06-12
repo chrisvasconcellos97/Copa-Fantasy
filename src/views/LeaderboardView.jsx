@@ -5,8 +5,10 @@ import { usePlayers } from '../hooks/usePlayers.js';
 import { useDraft } from '../hooks/useDraft.js';
 import { getSession } from '../lib/session.js';
 import { supabase } from '../lib/supabase.js';
-import { RESULT_TYPES, SCORING } from '../lib/constants.js';
+import { RESULT_TYPES, SCORING, normalizePosition } from '../lib/constants.js';
 import LeaderboardRow from '../components/LeaderboardRow.jsx';
+import SubstitutionModal from '../components/SubstitutionModal.jsx';
+import { getSquadForTeam } from '../lib/wcSquads.js';
 
 export default function LeaderboardView() {
   const { gameId } = useParams();
@@ -22,6 +24,12 @@ export default function LeaderboardView() {
   const [captainPicksAll, setCaptainPicksAll] = useState([]);
   const [expandedRow, setExpandedRow] = useState(null);
 
+  // Substitutions
+  const [mySubModal, setMySubModal] = useState(null); // { draftPick, team, currentPlayers }
+  const [mySubstitutions, setMySubstitutions] = useState([]); // rows from DB
+  const [myPlayerPicks, setMyPlayerPicks] = useState([]);
+  const [squadPlayers, setSquadPlayers] = useState({}); // teamApiId -> player objects
+
   // Host controls
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedResultType, setSelectedResultType] = useState('group_win');
@@ -33,16 +41,38 @@ export default function LeaderboardView() {
 
   useEffect(() => {
     async function loadData() {
-      const [{ data: teamsData }, { data: playersData }, { data: ppData }, { data: cpData }] = await Promise.all([
+      const myId = session?.playerId;
+      const [{ data: teamsData }, { data: playersData }, { data: ppData }, { data: cpData }, { data: subsData }, { data: myPpData }] = await Promise.all([
         supabase.from('teams').select('*'),
         supabase.from('players').select('*'),
         supabase.from('player_picks').select('*').eq('game_id', gameId),
         supabase.from('captain_picks').select('*').eq('game_id', gameId),
+        supabase.from('substitutions').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
+        supabase.from('player_picks').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
       ]);
       setTeams(teamsData || []);
       setAllPlayers(playersData || []);
       setPlayerPicksAll(ppData || []);
       setCaptainPicksAll(cpData || []);
+      setMySubstitutions(subsData || []);
+      setMyPlayerPicks(myPpData || []);
+
+      // Build squad player lookup from DB or fallback for my teams
+      if (teamsData && myPpData) {
+        const myPickTeamIds = [...new Set((ppData || []).filter(p => p.game_player_id === myId).map(p => p.team_api_id))];
+        const lookup = {};
+        for (const tid of myPickTeamIds) {
+          const { data: tPlayers } = await supabase.from('players').select('*').eq('team_api_id', String(tid));
+          if (tPlayers && tPlayers.length > 0) {
+            lookup[tid] = tPlayers;
+          } else {
+            const team = (teamsData || []).find(t => String(t.api_id) === String(tid));
+            const raw = team ? getSquadForTeam(team.name) : null;
+            lookup[tid] = raw ? raw.map(p => ({ api_id: p.id, name: p.name, position: p.position, isTop: p.isTop })) : [];
+          }
+        }
+        setSquadPlayers(lookup);
+      }
     }
     loadData();
   }, [gameId]);
@@ -154,9 +184,107 @@ export default function LeaderboardView() {
     captainMap[cp.game_player_id] = cp.player_api_id;
   }
 
+  // My teams with player picks (accounting for subs)
+  const myId = session?.playerId;
+  const myDraftPicks = picks.filter(p => p.game_player_id === myId);
+
+  function getActivePlayers(draftPickId, teamApiId) {
+    const base = myPlayerPicks.filter(p => p.draft_pick_id === draftPickId);
+    const sub = mySubstitutions.find(s => s.draft_pick_id === draftPickId);
+    if (!sub) return base;
+    return base.map(p => p.player_api_id === sub.old_player_api_id
+      ? { ...p, player_api_id: sub.new_player_api_id, subbed: true }
+      : p
+    );
+  }
+
+  function resolvePlayerName(apiId, teamApiId) {
+    const dbPlayer = allPlayers.find(p => p.api_id === apiId);
+    if (dbPlayer) return dbPlayer.name;
+    const squad = squadPlayers[teamApiId] || [];
+    const local = squad.find(p => p.api_id === apiId);
+    return local?.name || apiId;
+  }
+
+  function resolvePlayerPos(apiId, teamApiId) {
+    const dbPlayer = allPlayers.find(p => p.api_id === apiId);
+    if (dbPlayer) return normalizePosition(dbPlayer.position);
+    const squad = squadPlayers[teamApiId] || [];
+    const local = squad.find(p => p.api_id === apiId);
+    return local ? normalizePosition(local.position) : '?';
+  }
+
+  const POS_COLOR = { GK: 'var(--gold)', DEF: 'var(--success)', MID: '#3b82f6', FWD: 'var(--danger)' };
+
   return (
     <div className="page">
       <h1 className="page-title">Leaderboard</h1>
+
+      {/* My Squad & Subs — shown to logged-in users */}
+      {myId && myDraftPicks.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div className="section-header">My Squad</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {myDraftPicks.map(dp => {
+              const team = teams.find(t => String(t.api_id) === String(dp.team_api_id));
+              const activePlayers = getActivePlayers(dp.id, dp.team_api_id);
+              const subUsed = mySubstitutions.some(s => s.draft_pick_id === dp.id);
+              return (
+                <div key={dp.id} className="card" style={{ padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{team?.name || dp.team_code}</span>
+                    {subUsed ? (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Sub used ✓</span>
+                    ) : (
+                      <button
+                        className="btn btn-sm"
+                        style={{ fontSize: '0.75rem', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+                        onClick={() => setMySubModal({ draftPick: dp, team, currentPlayers: activePlayers })}
+                      >
+                        🔄 Sub
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {activePlayers.map(p => {
+                      const pos = resolvePlayerPos(p.player_api_id, dp.team_api_id);
+                      return (
+                        <span key={p.player_api_id} style={{
+                          fontSize: '0.78rem', fontWeight: 600,
+                          padding: '3px 8px', borderRadius: 100,
+                          background: 'rgba(255,255,255,0.05)',
+                          border: `1px solid ${POS_COLOR[pos] || 'var(--border)'}`,
+                          color: p.subbed ? 'var(--success)' : 'var(--text)',
+                        }}>
+                          <span style={{ fontSize: '0.65rem', color: POS_COLOR[pos], fontWeight: 700, marginRight: 4 }}>{pos}</span>
+                          {resolvePlayerName(p.player_api_id, dp.team_api_id)}
+                          {p.subbed && ' ↑'}
+                        </span>
+                      );
+                    })}
+                    {activePlayers.length === 0 && <span className="text-muted text-sm">No players picked</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {mySubModal && (
+        <SubstitutionModal
+          gameId={gameId}
+          gamePlayerId={myId}
+          draftPick={mySubModal.draftPick}
+          team={mySubModal.team}
+          currentPlayers={mySubModal.currentPlayers}
+          onClose={() => setMySubModal(null)}
+          onDone={({ draftPickId, oldId, newId }) => {
+            setMySubstitutions(prev => [...prev, { draft_pick_id: draftPickId, old_player_api_id: oldId, new_player_api_id: newId }]);
+            setMySubModal(null);
+          }}
+        />
+      )}
 
       {scoresLoading ? (
         <div className="loading"><div className="spinner" /></div>
