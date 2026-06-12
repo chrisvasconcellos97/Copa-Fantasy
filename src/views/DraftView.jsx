@@ -22,34 +22,57 @@ import MascotHint from '../components/MascotHint';
 
 const TOTAL_ROUNDS = 8;
 
-function HostPlayerPickStatus({ players, picks, gameId, totalExpected, onAdvance }) {
-  const [counts, setCounts] = React.useState({});
+function HostSetupDashboard({ players, gameId, totalPicks, onStart }) {
+  const [pickCounts, setPickCounts] = React.useState({});
+  const [captainCounts, setCaptainCounts] = React.useState({});
+
   React.useEffect(() => {
-    supabase.from('player_picks').select('game_player_id').eq('game_id', gameId).then(({ data }) => {
-      const c = {};
-      for (const row of data || []) c[row.game_player_id] = (c[row.game_player_id] || 0) + 1;
-      setCounts(c);
-    });
+    let cancelled = false;
+    async function load() {
+      const [{ data: pp }, { data: cp }] = await Promise.all([
+        supabase.from('player_picks').select('game_player_id').eq('game_id', gameId),
+        supabase.from('captain_picks').select('game_player_id').eq('game_id', gameId),
+      ]);
+      if (cancelled) return;
+      const pc = {};
+      for (const row of pp || []) pc[row.game_player_id] = (pc[row.game_player_id] || 0) + 1;
+      const cc = {};
+      for (const row of cp || []) cc[row.game_player_id] = 1;
+      setPickCounts(pc);
+      setCaptainCounts(cc);
+    }
+    load();
+    const interval = setInterval(load, 10000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [gameId]);
 
-  const doneCount = players.filter(p => (counts[p.id] || 0) >= totalExpected).length;
+  const allDone = players.every(p => (pickCounts[p.id] || 0) >= totalPicks && captainCounts[p.id]);
 
   return (
-    <div className="card mb-16" style={{ textAlign: 'center' }}>
-      <p style={{ fontWeight: 700, marginBottom: 8 }}>
-        Player picks: {doneCount}/{players.length} done
-      </p>
-      {players.length > 1 && (
-        <div style={{ marginBottom: 12, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          {players.map(p => (
-            <span key={p.id} style={{ marginRight: 10, color: (counts[p.id] || 0) >= totalExpected ? 'var(--success)' : 'var(--text-muted)' }}>
-              {(counts[p.id] || 0) >= totalExpected ? '✓' : '○'} {p.player_name}
-            </span>
-          ))}
-        </div>
-      )}
-      <button className="btn btn-primary" onClick={onAdvance}>
-        Advance to Captain Selection →
+    <div className="card mb-16">
+      <p style={{ fontWeight: 700, marginBottom: 12, textAlign: 'center' }}>👑 Host Dashboard</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+        {players.map(p => {
+          const picks = pickCounts[p.id] || 0;
+          const hasCaptain = !!captainCounts[p.id];
+          const picksOk = picks >= totalPicks;
+          return (
+            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontWeight: 600 }}>{p.player_name}</span>
+              <span style={{ display: 'flex', gap: 10, color: 'var(--text-muted)' }}>
+                <span style={{ color: picksOk ? 'var(--success)' : 'var(--text-muted)' }}>
+                  {picksOk ? '✓' : `${picks}/${totalPicks}`} players
+                </span>
+                <span style={{ color: hasCaptain ? 'var(--success)' : 'var(--text-muted)' }}>
+                  {hasCaptain ? '✓' : '○'} captain
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <button className="btn btn-primary btn-full" onClick={onStart}>
+        {allDone ? '🚀 Start Tournament →' : '⚠️ Start Tournament Anyway →'}
       </button>
     </div>
   );
@@ -172,7 +195,7 @@ export default function DraftView() {
 
   // Load enriched player details for captain selection grid
   useEffect(() => {
-    if (game?.status !== 'selecting_captain' || savedPlayerPicks.length === 0) return;
+    if (!['selecting_players', 'selecting_captain'].includes(game?.status) || savedPlayerPicks.length === 0) return;
     const ids = savedPlayerPicks.map(p => p.player_api_id);
     supabase.from('players').select('*').in('api_id', ids).then(({ data }) => {
       if (data) setCaptainPlayers(data.map(p => ({ ...p, isTop: p.is_top || false, rating: p.overall ?? null })));
@@ -274,7 +297,7 @@ export default function DraftView() {
   async function handleAdvancePhase() {
     const transitions = {
       drafting_teams: 'selecting_players',
-      selecting_players: 'selecting_captain',
+      selecting_players: 'tournament',
       selecting_captain: 'tournament',
     };
     const next = transitions[game.status];
@@ -586,19 +609,47 @@ export default function DraftView() {
         </>
       )}
 
-      {/* PHASE: selecting_players */}
-      {game?.status === 'selecting_players' && (
+      {/* PHASE: selecting_players (or legacy selecting_captain) — each player flows independently */}
+      {(game?.status === 'selecting_players' || game?.status === 'selecting_captain') && (
         <>
-
           {isHost && (
-            <HostPlayerPickStatus
+            <HostSetupDashboard
               players={players}
-              picks={picks}
               gameId={gameId}
-              totalExpected={TOTAL_ROUNDS * 3}
-              onAdvance={handleAdvancePhase}
+              totalPicks={TOTAL_ROUNDS * 3}
+              onStart={handleAdvancePhase}
             />
           )}
+
+          {/* Show captain UI once all player picks are saved */}
+          {savedPlayerPicks.length >= TOTAL_ROUNDS * 3 ? (
+            <div className="card">
+              <p style={{ fontWeight: 700, marginBottom: 12, textAlign: 'center' }}>
+                👑 Pick Your Captain
+              </p>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 16, textAlign: 'center' }}>
+                Pick one player to be your captain — they score double points for every goal, assist, and clean sheet.
+              </p>
+              <CaptainGrid
+                playerPicks={captainPlayers}
+                captainPickId={captainPickId}
+                onSelectCaptain={(player) => {
+                  setCaptainPickId(player.api_id);
+                  setCaptainSaved(false);
+                }}
+              />
+              <div className="mt-16">
+                <button
+                  className="btn btn-primary btn-full"
+                  onClick={handleSaveCaptain}
+                  disabled={!captainPickId || captainSaved}
+                >
+                  {captainSaved ? '✅ Captain Saved — waiting for host to start' : '👑 Confirm Captain'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
 
           {/* Team tabs */}
           <div className="tabs scroll-x" style={{ marginBottom: 16 }}>
@@ -698,40 +749,8 @@ export default function DraftView() {
               <p>Select a team tab above to pick players</p>
             </div>
           )}
-        </>
-      )}
-
-      {/* PHASE: selecting_captain */}
-      {game?.status === 'selecting_captain' && (
-        <>
-
-          {isHost && (
-            <div className="card mb-16" style={{ textAlign: 'center' }}>
-              <button className="btn btn-primary" onClick={handleAdvancePhase}>
-                Start Tournament →
-              </button>
-            </div>
+          </>
           )}
-
-          <div className="card">
-            <CaptainGrid
-              playerPicks={captainPlayers}
-              captainPickId={captainPickId}
-              onSelectCaptain={(player) => {
-                setCaptainPickId(player.api_id);
-                setCaptainSaved(false);
-              }}
-            />
-            <div className="mt-16">
-              <button
-                className="btn btn-primary btn-full"
-                onClick={handleSaveCaptain}
-                disabled={!captainPickId || captainSaved}
-              >
-                {captainSaved ? '✅ Captain Saved' : '👑 Confirm Captain'}
-              </button>
-            </div>
-          </div>
         </>
       )}
     </div>
