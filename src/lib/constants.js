@@ -34,7 +34,6 @@ export const RESULT_TYPES = [
 
 export const BONUS_TYPES = [
   { value: 'top_scorer', label: 'Top Scorer (Round)', points: 15 },
-  { value: 'golden_boot', label: 'Golden Boot', points: 20 },
   { value: 'custom', label: 'Custom Bonus', points: 0 },
 ];
 
