@@ -22,6 +22,39 @@ import MascotHint from '../components/MascotHint';
 
 const TOTAL_ROUNDS = 8;
 
+function HostPlayerPickStatus({ players, picks, gameId, totalExpected, onAdvance }) {
+  const [counts, setCounts] = React.useState({});
+  React.useEffect(() => {
+    supabase.from('player_picks').select('game_player_id').eq('game_id', gameId).then(({ data }) => {
+      const c = {};
+      for (const row of data || []) c[row.game_player_id] = (c[row.game_player_id] || 0) + 1;
+      setCounts(c);
+    });
+  }, [gameId]);
+
+  const doneCount = players.filter(p => (counts[p.id] || 0) >= totalExpected).length;
+
+  return (
+    <div className="card mb-16" style={{ textAlign: 'center' }}>
+      <p style={{ fontWeight: 700, marginBottom: 8 }}>
+        Player picks: {doneCount}/{players.length} done
+      </p>
+      {players.length > 1 && (
+        <div style={{ marginBottom: 12, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+          {players.map(p => (
+            <span key={p.id} style={{ marginRight: 10, color: (counts[p.id] || 0) >= totalExpected ? 'var(--success)' : 'var(--text-muted)' }}>
+              {(counts[p.id] || 0) >= totalExpected ? '✓' : '○'} {p.player_name}
+            </span>
+          ))}
+        </div>
+      )}
+      <button className="btn btn-primary" onClick={onAdvance}>
+        Advance to Captain Selection →
+      </button>
+    </div>
+  );
+}
+
 export default function DraftView() {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -134,6 +167,25 @@ export default function DraftView() {
     if (squad) setTeamPlayers(prev => ({ ...prev, [teamApiId]: squad }));
   }
 
+  // Re-populate checkbox state from DB picks after refresh
+  useEffect(() => {
+    if (!savedPlayerPicks.length || !picks.length) return;
+    setSelectedPlayerIds(prev => {
+      const next = { ...prev };
+      for (const pp of savedPlayerPicks) {
+        const dp = picks.find(p => p.id === pp.draft_pick_id);
+        if (!dp) continue;
+        const teamId = dp.team_api_id ?? dp.team_code;
+        if (!teamId) continue;
+        if (!next[teamId]) next[teamId] = [];
+        if (!next[teamId].includes(pp.player_api_id)) {
+          next[teamId] = [...next[teamId], pp.player_api_id];
+        }
+      }
+      return next;
+    });
+  }, [savedPlayerPicks, picks]);
+
   // Load captain pick
   useEffect(() => {
     if (game?.status !== 'selecting_captain') return;
@@ -216,26 +268,8 @@ export default function DraftView() {
     const next = transitions[game.status];
     if (!next) return;
 
-    // Guard: before moving to captain selection, ensure every player has
-    // saved 3 picks for each of their 8 teams (8 × 3 = 24 per player)
-    if (game.status === 'selecting_players') {
-      const { data: allPicks } = await supabase
-        .from('player_picks')
-        .select('game_player_id')
-        .eq('game_id', gameId);
-
-      const countByPlayer = {};
-      for (const row of (allPicks || [])) {
-        countByPlayer[row.game_player_id] = (countByPlayer[row.game_player_id] || 0) + 1;
-      }
-      const expected = TOTAL_ROUNDS * 3; // 8 teams × 3 players = 24
-      const incomplete = players.filter(p => (countByPlayer[p.id] || 0) < expected);
-      if (incomplete.length > 0) {
-        const names = incomplete.map(p => p.player_name).join(', ');
-        alert(`Not everyone has finished picking their players yet.\n\nStill incomplete: ${names}\n\nAsk them to pick 3 players for each of their 8 teams before advancing.`);
-        return;
-      }
-    }
+    // No blocking check — the host decides when to advance.
+    // The host dashboard shows who is/isn't done.
 
     const { error } = await supabase
       .from('games')
@@ -301,7 +335,7 @@ export default function DraftView() {
     if (playerIds.length === 0) return;
 
     // Find the draft_pick for this team (links player_picks back to the team)
-    const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (p.team_api_id === teamApiId || p.team_code === String(teamApiId)));
+    const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
     if (!draftPick) { alert('Draft pick not found for this team'); return; }
 
     // Remove old picks for this draft_pick
@@ -545,11 +579,13 @@ export default function DraftView() {
         <>
 
           {isHost && (
-            <div className="card mb-16" style={{ textAlign: 'center' }}>
-              <button className="btn btn-primary" onClick={handleAdvancePhase}>
-                Advance to Captain Selection →
-              </button>
-            </div>
+            <HostPlayerPickStatus
+              players={players}
+              picks={picks}
+              gameId={gameId}
+              totalExpected={TOTAL_ROUNDS * 3}
+              onAdvance={handleAdvancePhase}
+            />
           )}
 
           {/* Team tabs */}
