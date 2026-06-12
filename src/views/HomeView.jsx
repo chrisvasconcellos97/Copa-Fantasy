@@ -22,6 +22,8 @@ export default function HomeView() {
   const [joinName, setJoinName] = useState('');
   const [rejoinCode, setRejoinCode] = useState('');
   const [rejoinName, setRejoinName] = useState('');
+  const [teamsPerPlayer, setTeamsPerPlayer] = useState(8);
+  const [playersPerTeam, setPlayersPerTeam] = useState(3);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,7 +40,7 @@ export default function HomeView() {
       // Create game
       const { data: game, error: gameErr } = await supabase
         .from('games')
-        .insert({ status: 'lobby', host_token: hostToken, join_code: joinCode })
+        .insert({ status: 'lobby', host_token: hostToken, join_code: joinCode, teams_per_player: teamsPerPlayer, players_per_team: playersPerTeam })
         .select()
         .single();
       if (gameErr) throw gameErr;
@@ -241,6 +243,49 @@ export default function HomeView() {
                 maxLength={32}
                 required
               />
+            </div>
+            <div className="form-group">
+              <label className="input-label">Teams per Player</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[4, 6, 8].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    className="btn"
+                    onClick={() => setTeamsPerPlayer(n)}
+                    style={{
+                      flex: 1,
+                      background: teamsPerPlayer === n ? 'var(--gold)' : 'var(--dark-bg)',
+                      color: teamsPerPlayer === n ? '#0a0a0f' : 'var(--text-muted)',
+                      fontWeight: 700,
+                      border: `1px solid ${teamsPerPlayer === n ? 'var(--gold)' : 'var(--border)'}`,
+                    }}
+                  >{n}</button>
+                ))}
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                {teamsPerPlayer === 4 ? 'Great for 10+ players' : teamsPerPlayer === 6 ? 'Good for 7–9 players' : 'Standard for up to 6 players'}
+              </p>
+            </div>
+            <div className="form-group">
+              <label className="input-label">Players per Team</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[3, 4, 5].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    className="btn"
+                    onClick={() => setPlayersPerTeam(n)}
+                    style={{
+                      flex: 1,
+                      background: playersPerTeam === n ? 'var(--gold)' : 'var(--dark-bg)',
+                      color: playersPerTeam === n ? '#0a0a0f' : 'var(--text-muted)',
+                      fontWeight: 700,
+                      border: `1px solid ${playersPerTeam === n ? 'var(--gold)' : 'var(--border)'}`,
+                    }}
+                  >{n}</button>
+                ))}
+              </div>
             </div>
             {error && <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: 12 }}>{error}</div>}
             <button

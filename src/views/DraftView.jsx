@@ -20,8 +20,6 @@ import PokeToast from '../components/PokeToast';
 import SquadBuilder from '../components/SquadBuilder';
 import MascotHint from '../components/MascotHint';
 
-const TOTAL_ROUNDS = 8;
-
 function HostSetupDashboard({ players, gameId, totalPicks, onStart, refreshKey }) {
   const [pickCounts, setPickCounts] = React.useState({});
   const [captainCounts, setCaptainCounts] = React.useState({});
@@ -240,6 +238,9 @@ export default function DraftView() {
     loadCaptain();
   }, [game?.status, gameId, myPlayerId]);
 
+  const TOTAL_ROUNDS = game?.teams_per_player ?? 8;
+  const PICKS_PER_TEAM = game?.players_per_team ?? 3;
+
   const snakeOrder = getSnakeOrder(players, TOTAL_ROUNDS);
   const currentPickerIndex = getCurrentPicker(picks, players, TOTAL_ROUNDS);
   const myPicks = picks.filter((p) => p.game_player_id === myPlayerId);
@@ -328,19 +329,28 @@ export default function DraftView() {
       if (star) { picked.push(star.api_id); pickedIds.add(star.api_id); pickedPositions.add(pos); break; }
     }
 
-    // Fill remaining 2 slots: 1 per position, prefer stars
+    // Fill remaining slots: 1 per position, prefer stars
     for (const pos of positions) {
-      if (picked.length >= 3) break;
+      if (picked.length >= PICKS_PER_TEAM) break;
       if (pickedPositions.has(pos)) continue;
       const candidates = squad.filter(p => normalizePosition(p.position) === pos && !pickedIds.has(p.api_id));
       const best = candidates.find(p => p.isTop) || candidates[0];
       if (best) { picked.push(best.api_id); pickedIds.add(best.api_id); pickedPositions.add(pos); }
     }
+    // If still short (PICKS_PER_TEAM > 4), fill from any position
+    if (picked.length < PICKS_PER_TEAM) {
+      const remaining = squad.filter(p => !pickedIds.has(p.api_id)).sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
+      for (const p of remaining) {
+        if (picked.length >= PICKS_PER_TEAM) break;
+        picked.push(p.api_id);
+        pickedIds.add(p.api_id);
+      }
+    }
 
     const next = { ...selectedPlayerIds, [teamApiId]: picked };
     setSelectedPlayerIds(next);
-    // Auto-save immediately (3 picks chosen)
-    if (picked.length === 3) {
+    // Auto-save when all picks chosen
+    if (picked.length === PICKS_PER_TEAM) {
       const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
       if (draftPick) _savePicksForTeam(teamApiId, picked, draftPick);
     }
@@ -366,11 +376,11 @@ export default function DraftView() {
       if (samePosPick) {
         return { ...prev, [teamApiId]: current.map(id => id === samePosPick ? playerApiId : id) };
       }
-      // Don't exceed 3 total
-      if (current.length >= 3) return prev;
+      // Don't exceed max total
+      if (current.length >= PICKS_PER_TEAM) return prev;
       const updated = [...current, playerApiId];
-      // Auto-save when 3rd player selected
-      if (updated.length === 3) {
+      // Auto-save when all players selected
+      if (updated.length === PICKS_PER_TEAM) {
         const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
         if (draftPick) setTimeout(() => _savePicksForTeam(teamApiId, updated, draftPick), 0);
       }
@@ -416,7 +426,7 @@ export default function DraftView() {
     let allOk = true;
     for (const teamApiId of myTeamIds) {
       const playerIds = selectedPlayerIds[teamApiId] || [];
-      if (playerIds.length !== 3) { allOk = false; continue; }
+      if (playerIds.length !== PICKS_PER_TEAM) { allOk = false; continue; }
       const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
       if (!draftPick) { allOk = false; continue; }
       await _savePicksForTeam(teamApiId, playerIds, draftPick);
@@ -478,9 +488,9 @@ export default function DraftView() {
     if (game?.status === 'selecting_players') {
       const draftPick = activeTeamTab ? picks.find(p => p.game_player_id === myPlayerId && (p.team_api_id === activeTeamTab || p.team_api_id === String(activeTeamTab))) : null;
       const savedCount = draftPick ? savedPlayerPicks.filter(p => p.draft_pick_id === draftPick.id).length : 0;
-      if (!activeTeamTab) return { pose: 'idle', message: "Tap a team tab above to see its squad. You need to pick 3 players from each of your 8 teams." };
-      if (savedCount === 3) return { pose: 'celebrating', message: "Nice picks! Tap another team tab to keep going. Come back anytime to change your selections before the host moves on." };
-      return { pose: 'thinking', message: `Pick 3 players — max one per position (GK / DEF / MID / FWD). Stars ⭐ highlight each team's standout players.` };
+      if (!activeTeamTab) return { pose: 'idle', message: `Tap a team tab above to see its squad. You need to pick ${PICKS_PER_TEAM} players from each of your ${TOTAL_ROUNDS} teams.` };
+      if (savedCount === PICKS_PER_TEAM) return { pose: 'celebrating', message: "Nice picks! Tap another team tab to keep going. Come back anytime to change your selections before the host moves on." };
+      return { pose: 'thinking', message: `Pick ${PICKS_PER_TEAM} players — max one per position (GK / DEF / MID / FWD). Stars ⭐ highlight each team's standout players.` };
     }
     if (game?.status === 'selecting_captain') {
       if (captainSaved) return { pose: 'celebrating', message: "Captain locked in! They'll earn double points all tournament. Sit tight for the host to kick things off." };
@@ -507,7 +517,7 @@ export default function DraftView() {
         <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--gold)' }}>
           {game?.status === 'drafting_teams' && '🏳️ Team Draft'}
           {(game?.status === 'selecting_players' || game?.status === 'selecting_captain') && (
-            savedPlayerPicks.length >= TOTAL_ROUNDS * 3 ? '👑 Choose Your Captain' : '👥 Pick Your Players'
+            savedPlayerPicks.length >= TOTAL_ROUNDS * PICKS_PER_TEAM ? '👑 Choose Your Captain' : '👥 Pick Your Players'
           )}
         </h1>
       </div>
@@ -642,19 +652,19 @@ export default function DraftView() {
             <HostSetupDashboard
               players={players}
               gameId={gameId}
-              totalPicks={TOTAL_ROUNDS * 3}
+              totalPicks={TOTAL_ROUNDS * PICKS_PER_TEAM}
               onStart={handleAdvancePhase}
               refreshKey={dashRefresh}
             />
           )}
 
           {/* Progress + Lock In bar */}
-          {savedPlayerPicks.length < TOTAL_ROUNDS * 3 && (() => {
+          {savedPlayerPicks.length < TOTAL_ROUNDS * PICKS_PER_TEAM && (() => {
             const savedTeams = myTeams.filter(t => {
               const dp = picks.find(p => p.game_player_id === myPlayerId && String(p.team_api_id) === String(t.api_id));
-              return dp && savedPlayerPicks.filter(pp => pp.draft_pick_id === dp.id).length === 3;
+              return dp && savedPlayerPicks.filter(pp => pp.draft_pick_id === dp.id).length === PICKS_PER_TEAM;
             });
-            const selectedTeams = myTeams.filter(t => (selectedPlayerIds[t.api_id] || []).length === 3);
+            const selectedTeams = myTeams.filter(t => (selectedPlayerIds[t.api_id] || []).length === PICKS_PER_TEAM);
             const allSelected = selectedTeams.length === TOTAL_ROUNDS;
             return (
               <div className="card mb-16" style={{ padding: '12px 16px' }}>
@@ -679,7 +689,7 @@ export default function DraftView() {
           })()}
 
           {/* Show captain UI once all player picks are saved */}
-          {savedPlayerPicks.length >= TOTAL_ROUNDS * 3 ? (
+          {savedPlayerPicks.length >= TOTAL_ROUNDS * PICKS_PER_TEAM ? (
             <div className="card">
               <p style={{ fontWeight: 700, marginBottom: 12, textAlign: 'center' }}>
                 👑 Pick Your Captain
@@ -721,19 +731,19 @@ export default function DraftView() {
                     setActiveTeamTab(team.api_id);
                     loadTeamPlayers(team.api_id);
                   }}
-                  style={savedCount === 3 ? {
+                  style={savedCount === PICKS_PER_TEAM ? {
                     borderColor: 'var(--success)',
                     color: activeTeamTab === team.api_id ? undefined : 'var(--success)',
                     background: activeTeamTab === team.api_id ? undefined : 'rgba(34,197,94,0.08)',
                   } : {}}
                 >
-                  {savedCount === 3 ? '✓ ' : ''}{team.name}
-                  {savedCount > 0 && savedCount < 3 && (
+                  {savedCount === PICKS_PER_TEAM ? '✓ ' : ''}{team.name}
+                  {savedCount > 0 && savedCount < PICKS_PER_TEAM && (
                     <span
                       className="badge badge-muted"
                       style={{ marginLeft: 6, fontSize: '0.65rem' }}
                     >
-                      {savedCount}/3
+                      {savedCount}/{PICKS_PER_TEAM}
                     </span>
                   )}
                 </button>
@@ -767,7 +777,7 @@ export default function DraftView() {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {(() => {
                         const dp = picks.find(p => p.game_player_id === myPlayerId && String(p.team_api_id) === String(activeTeamTab));
-                        const saved = dp && savedPlayerPicks.filter(pp => pp.draft_pick_id === dp.id).length === 3;
+                        const saved = dp && savedPlayerPicks.filter(pp => pp.draft_pick_id === dp.id).length === PICKS_PER_TEAM;
                         return saved ? <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 700 }}>✓ Saved</span> : null;
                       })()}
                       <button
