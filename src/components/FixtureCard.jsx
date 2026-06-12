@@ -16,8 +16,8 @@ export default function FixtureCard({ fixture, myTeamApiIds = [], isLive }) {
   const isMyMatch = homeIsMyTeam || awayIsMyTeam;
 
   const hasScore =
-    fixture.home_score !== null && fixture.home_score !== undefined &&
-    fixture.away_score !== null && fixture.away_score !== undefined;
+    fixture.home_goals !== null && fixture.home_goals !== undefined &&
+    fixture.away_goals !== null && fixture.away_goals !== undefined;
 
   return (
     <div
@@ -87,16 +87,16 @@ export default function FixtureCard({ fixture, myTeamApiIds = [], isLive }) {
                 letterSpacing: '0.05em',
               }}
             >
-              {fixture.home_score} – {fixture.away_score}
+              {fixture.home_goals} – {fixture.away_goals}
             </span>
           ) : (
             <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              {formatTime(fixture.kickoff_at) || 'TBD'}
+              {formatTime(fixture.kickoff) || 'TBD'}
             </span>
           )}
-          {fixture.minute && isLive && (
+          {fixture.elapsed && isLive && (
             <div style={{ fontSize: '0.7rem', color: 'var(--danger)', marginTop: 2 }}>
-              {fixture.minute}&apos;
+              {fixture.elapsed}&apos;
             </div>
           )}
         </div>
