@@ -76,15 +76,10 @@ export default function MatchCenterView() {
             {liveFixtures.map(fixture => {
               return (
                 <div key={fixture.id}>
-                  <div onClick={() => setExpandedFixture(expandedFixture === fixture.id ? null : fixture.id)}
-                    style={{ cursor: 'pointer' }}>
-                    <FixtureCard fixture={fixture} myTeamApiIds={[]} isLive />
+                  <FixtureCard fixture={fixture} myTeamApiIds={[]} isLive />
+                  <div style={{ marginTop: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
+                    <MatchDetail fixture={fixture} />
                   </div>
-                  {expandedFixture === fixture.id && (
-                    <div style={{ marginTop: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
-                      <MatchDetail fixture={fixture} />
-                    </div>
-                  )}
                 </div>
               );
             })}

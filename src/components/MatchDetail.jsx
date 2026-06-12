@@ -44,17 +44,26 @@ function eventIcon(type) {
   return '•';
 }
 
+function isLive(fixture) {
+  if (fixture?.elapsed != null) return true;
+  const s = fixture?.status_short || '';
+  return ['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'in'].includes(s) || /^\d+'$/.test(s);
+}
+
 export default function MatchDetail({ fixture }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const live = isLive(fixture);
 
   useEffect(() => {
     if (!fixture?.api_id) return;
+    let first = true;
     setLoading(true);
     setError(null);
 
-    fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${fixture.api_id}`)
+    function load() {
+      return fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${fixture.api_id}`)
       .then(r => r.json())
       .then(json => {
         const comp = json.header?.competitions?.[0];
@@ -90,13 +99,20 @@ export default function MatchDetail({ fixture }) {
           .sort((a, b) => (a.minute || 0) - (b.minute || 0));
 
         setData({ statsMap, events, comp });
-        setLoading(false);
+        if (first) { setLoading(false); first = false; }
       })
-      .catch(err => {
-        setError('Could not load match details');
-        setLoading(false);
+      .catch(() => {
+        if (first) { setError('Could not load match details'); setLoading(false); first = false; }
       });
-  }, [fixture?.api_id]);
+    }
+
+    load();
+    // Poll every 60s while live so scorers update in real time
+    if (live) {
+      const interval = setInterval(load, 60_000);
+      return () => clearInterval(interval);
+    }
+  }, [fixture?.api_id, live]);
 
   if (loading) return <div style={{ padding: '16px 0', textAlign: 'center' }}><div className="spinner" style={{ width: 20, height: 20 }} /></div>;
   if (error) return <div className="text-muted text-sm" style={{ padding: 12 }}>{error}</div>;
