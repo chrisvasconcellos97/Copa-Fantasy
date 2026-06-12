@@ -384,12 +384,14 @@ export default function DraftView() {
     const squad = teamPlayers[teamApiId] || [];
     const inserts = playerIds.map((pid) => {
       const player = squad.find(p => p.api_id === pid || String(p.api_id) === String(pid));
+      const pos = normalizePosition(player?.position) || 'MID';
+      const pickPos = pos === 'GK' ? 'DEF' : pos;
       return {
         game_id: gameId,
         game_player_id: myPlayerId,
         draft_pick_id: draftPick.id,
         player_api_id: Number(pid),
-        position: normalizePosition(player?.position) || 'MID',
+        position: pickPos,
       };
     });
     const { error } = await supabase.from('player_picks').insert(inserts);
