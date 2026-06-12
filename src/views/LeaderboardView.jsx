@@ -157,16 +157,21 @@ export default function LeaderboardView() {
 
   async function handleRecalculate() {
     setHostLoading(true);
-    setHostMsg('');
+    setHostMsg('Syncing match events...');
+    const HEADERS = { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtYXNhYXB3Ymh4dWV1aHh4cWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTI1OTgsImV4cCI6MjA5NjM4ODU5OH0.pAdFowezL_l7QLLA0Y4KgyGAcDbYtx0OppA_id1agdY' };
+    const BASE = 'https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1';
     try {
-      const res = await fetch('https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1/calculate-scores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtYXNhYXB3Ymh4dWV1aHh4cWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTI1OTgsImV4cCI6MjA5NjM4ODU5OH0.pAdFowezL_l7QLLA0Y4KgyGAcDbYtx0OppA_id1agdY' },
+      // Step 1: sync latest match events from ESPN
+      await fetch(`${BASE}/sync-match-events`, { method: 'POST', headers: HEADERS, body: '{}' });
+      setHostMsg('Calculating scores...');
+      // Step 2: calculate scores
+      const res = await fetch(`${BASE}/calculate-scores`, {
+        method: 'POST', headers: HEADERS,
         body: JSON.stringify({ game_id: gameId }),
       });
       const data = await res.json();
       if (data.success) {
-        setHostMsg(`✓ Scores recalculated from ${data.fixtures_processed} fixtures — ${data.players_updated} players updated`);
+        setHostMsg(`✓ Done — ${data.fixtures_processed} fixtures, ${data.events_processed} events, ${data.players_updated} players updated`);
       } else {
         setHostMsg(`Error: ${data.error}`);
       }
