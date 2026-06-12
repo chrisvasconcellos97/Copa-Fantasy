@@ -44,7 +44,7 @@ export const FALLBACK_POTS = {
   1: [
     { name: 'Mexico', logo: L('mex') },
     { name: 'Canada', logo: L('can') },
-    { name: 'USA', logo: L('usa') },
+    { name: 'United States', logo: L('usa') },
     { name: 'Argentina', logo: L('arg') },
     { name: 'Brazil', logo: L('bra') },
     { name: 'France', logo: L('fra') },
@@ -90,11 +90,11 @@ export const FALLBACK_POTS = {
     { name: 'Curaçao', logo: L('cuw') },
     { name: 'Haiti', logo: L('hai') },
     { name: 'New Zealand', logo: L('nzl') },
-    { name: 'Bosnia & Herzegovina', logo: L('bih') },
+    { name: 'Bosnia-Herzegovina', logo: L('bih') },
     { name: 'Sweden', logo: L('swe') },
     { name: 'Türkiye', logo: L('tur') },
     { name: 'Czechia', logo: L('cze') },
-    { name: 'DR Congo', logo: L('cod') },
+    { name: 'Congo DR', logo: L('cod') },
     { name: 'Iraq', logo: L('irq') },
   ],
 };

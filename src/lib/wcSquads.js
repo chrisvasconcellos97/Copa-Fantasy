@@ -276,7 +276,7 @@ export const WC_SQUADS = {
     { name: 'Henry Martín', position: 'FWD', isTop: true },
     { name: 'Uriel Antuna', position: 'FWD' },
   ]),
-  USA: sq('USA', [
+  'United States': sq('USA', [
     { name: 'Matt Turner', position: 'GK', isTop: true },
     { name: 'Ethan Horvath', position: 'GK' },
     { name: 'Patrick Schulte', position: 'GK' },
@@ -1025,7 +1025,7 @@ export const WC_SQUADS = {
     { name: 'Ben Waine', position: 'FWD' },
     { name: 'Oli Sail', position: 'GK' },
   ]),
-  'Bosnia & Herzegovina': sq('BIH', [
+  'Bosnia-Herzegovina': sq('BIH', [
     { name: 'Kenan Pirić', position: 'GK', isTop: true },
     { name: 'Ibrahim Šehić', position: 'GK' },
     { name: 'Sead Kolašinac', position: 'DEF', isTop: true },
@@ -1121,7 +1121,7 @@ export const WC_SQUADS = {
     { name: 'Anastasios Douvikas', position: 'FWD' },
     { name: 'Kwame Osei-Bonsu', position: 'MID' },
   ]),
-  'DR Congo': sq('COD', [
+  'Congo DR': sq('COD', [
     { name: 'Ley Matampi', position: 'GK', isTop: true },
     { name: 'Joël Kiassumbua', position: 'GK' },
     { name: 'Chancel Mbemba', position: 'DEF', isTop: true },

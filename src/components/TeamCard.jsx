@@ -1,7 +1,7 @@
 import React from 'react';
 
 const FLAG_MAP = {
-  'Mexico': '🇲🇽', 'Canada': '🇨🇦', 'USA': '🇺🇸', 'United States': '🇺🇸',
+  'Mexico': '🇲🇽', 'Canada': '🇨🇦', 'United States': '🇺🇸', 'USA': '🇺🇸',
   'Argentina': '🇦🇷', 'Brazil': '🇧🇷', 'France': '🇫🇷', 'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
   'Germany': '🇩🇪', 'Portugal': '🇵🇹', 'Netherlands': '🇳🇱', 'Spain': '🇪🇸',
   'Belgium': '🇧🇪', 'Croatia': '🇭🇷', 'Morocco': '🇲🇦', 'Colombia': '🇨🇴',
@@ -12,9 +12,9 @@ const FLAG_MAP = {
   'Ivory Coast': '🇨🇮', "Côte d'Ivoire": '🇨🇮', 'Uzbekistan': '🇺🇿', 'Qatar': '🇶🇦',
   'Saudi Arabia': '🇸🇦', 'South Africa': '🇿🇦', 'Jordan': '🇯🇴', 'Cape Verde': '🇨🇻',
   'Ghana': '🇬🇭', 'Curaçao': '🇨🇼', 'Haiti': '🇭🇹', 'New Zealand': '🇳🇿',
-  'Bosnia & Herzegovina': '🇧🇦', 'Bosnia and Herzegovina': '🇧🇦', 'Sweden': '🇸🇪',
+  'Bosnia-Herzegovina': '🇧🇦', 'Bosnia & Herzegovina': '🇧🇦', 'Bosnia and Herzegovina': '🇧🇦', 'Sweden': '🇸🇪',
   'Türkiye': '🇹🇷', 'Turkey': '🇹🇷', 'Czechia': '🇨🇿', 'Czech Republic': '🇨🇿',
-  'DR Congo': '🇨🇩', 'Iraq': '🇮🇶', 'Venezuela': '🇻🇪', 'Chile': '🇨🇱',
+  'Congo DR': '🇨🇩', 'DR Congo': '🇨🇩', 'Iraq': '🇮🇶', 'Venezuela': '🇻🇪', 'Chile': '🇨🇱',
   'Peru': '🇵🇪', 'Nigeria': '🇳🇬', 'Cameroon': '🇨🇲', 'Mali': '🇲🇱',
   'Kenya': '🇰🇪', 'Indonesia': '🇮🇩', 'Thailand': '🇹🇭', 'India': '🇮🇳',
   'China': '🇨🇳', 'Russia': '🇷🇺', 'Ukraine': '🇺🇦', 'Poland': '🇵🇱',
