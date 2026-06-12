@@ -46,7 +46,7 @@ export default function StatsView() {
         .map(([id, count]) => ({ player: getPlayer(id), team: getTeam(getPlayer(id)?.team_api_id), count }))
         .filter(r => r.player)
         .sort((a, b) => b.count - a.count)
-        .slice(0, 20);
+        .slice(0, 10);
 
       // Assists
       const assistCounts = {};
@@ -58,7 +58,7 @@ export default function StatsView() {
         .map(([id, count]) => ({ player: getPlayer(id), team: getTeam(getPlayer(id)?.team_api_id), count }))
         .filter(r => r.player)
         .sort((a, b) => b.count - a.count)
-        .slice(0, 20);
+        .slice(0, 10);
 
       // Clean sheets — GKs only, per team that conceded 0
       const csTeamCounts = {};
@@ -74,7 +74,7 @@ export default function StatsView() {
         })
         .filter(r => r.team)
         .sort((a, b) => b.count - a.count)
-        .slice(0, 20);
+        .slice(0, 10);
 
       // Cards
       const cardCounts = {};
@@ -88,7 +88,7 @@ export default function StatsView() {
         .map(([id, c]) => ({ player: getPlayer(id), team: getTeam(getPlayer(id)?.team_api_id), yellow: c.yellow, red: c.red, total: c.yellow + c.red * 2 }))
         .filter(r => r.player)
         .sort((a, b) => b.total - a.total)
-        .slice(0, 20);
+        .slice(0, 10);
 
       setStats({ goals, assists, clean_sheets, cards });
       setLoading(false);
