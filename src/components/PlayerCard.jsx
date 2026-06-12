@@ -75,11 +75,23 @@ export default function PlayerCard({ player, selected, onClick, showPosition = t
             src={player.photo_url}
             alt={player.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => { e.target.style.display = 'none'; }}
+            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
           />
-        ) : (
-          <span style={{ fontSize: '1.4rem' }}>👤</span>
-        )}
+        ) : null}
+        <span style={{
+          display: player?.photo_url ? 'none' : 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          height: '100%',
+          fontSize: '0.85rem',
+          fontWeight: 800,
+          color: posStyle.color,
+          background: posStyle.bg,
+          borderRadius: '50%',
+        }}>
+          {(player?.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+        </span>
       </div>
 
       {/* Number badge */}
