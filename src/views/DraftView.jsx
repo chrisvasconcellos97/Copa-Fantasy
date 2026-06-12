@@ -244,25 +244,27 @@ export default function DraftView() {
     if (error) alert('Error: ' + error.message);
   }
 
-  // Auto-pick: guarantee 1 star player (isTop), fill remaining slots by position
+  // Auto-pick: 1 player per position max, prefer stars, guarantee at least 1 star
   function handleAutoPick(teamApiId) {
     const squad = teamPlayers[teamApiId] || [];
     const positions = ['GK', 'DEF', 'MID', 'FWD'];
     const picked = [];
     const pickedIds = new Set();
+    const pickedPositions = new Set();
 
     // First: pick 1 star player (highest-rated position order)
     for (const pos of positions) {
       const star = squad.filter(p => normalizePosition(p.position) === pos && p.isTop)[0];
-      if (star) { picked.push(star.api_id); pickedIds.add(star.api_id); break; }
+      if (star) { picked.push(star.api_id); pickedIds.add(star.api_id); pickedPositions.add(pos); break; }
     }
 
-    // Fill remaining 2 slots: prefer stars, then fall back to any available by position
+    // Fill remaining 2 slots: 1 per position, prefer stars
     for (const pos of positions) {
       if (picked.length >= 3) break;
+      if (pickedPositions.has(pos)) continue;
       const candidates = squad.filter(p => normalizePosition(p.position) === pos && !pickedIds.has(p.api_id));
       const best = candidates.find(p => p.isTop) || candidates[0];
-      if (best) { picked.push(best.api_id); pickedIds.add(best.api_id); }
+      if (best) { picked.push(best.api_id); pickedIds.add(best.api_id); pickedPositions.add(pos); }
     }
 
     setSelectedPlayerIds(prev => ({ ...prev, [teamApiId]: picked }));
