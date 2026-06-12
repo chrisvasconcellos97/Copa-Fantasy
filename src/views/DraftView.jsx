@@ -18,6 +18,7 @@ import HostDashboard from '../components/HostDashboard';
 import CaptainGrid from '../components/CaptainGrid';
 import PokeToast from '../components/PokeToast';
 import SquadBuilder from '../components/SquadBuilder';
+import MascotHint from '../components/MascotHint';
 
 const TOTAL_ROUNDS = 8;
 
@@ -311,6 +312,28 @@ export default function DraftView() {
   // My picked players for captain selection
   const myPickedPlayerApiIds = savedPlayerPicks.map((p) => p.player_api_id);
 
+  // Contextual mascot hint
+  const waitingPlayer = players[currentPickerIndex]?.player_name;
+  const mascotHint = (() => {
+    if (game?.status === 'drafting_teams') {
+      if (draftComplete) return { pose: 'celebrating', message: "All teams drafted! Host will move everyone to the player selection phase next." };
+      if (isMyTurn) return { pose: 'excited', message: `Pot ${activePot} is open — pick a team! Pots 1 & 2 are the strongest nations. Tapped a card? Hit Confirm Pick to lock it in.` };
+      return { pose: 'idle', message: `${waitingPlayer || 'Someone'} is picking right now. Sit tight — you'll get your turn in snake order.` };
+    }
+    if (game?.status === 'selecting_players') {
+      const draftPick = activeTeamTab ? picks.find(p => p.game_player_id === myPlayerId && (p.team_api_id === activeTeamTab || p.team_api_id === String(activeTeamTab))) : null;
+      const savedCount = draftPick ? savedPlayerPicks.filter(p => p.draft_pick_id === draftPick.id).length : 0;
+      if (!activeTeamTab) return { pose: 'idle', message: "Tap a team tab above to see its squad. You need to pick 3 players from each of your 8 teams." };
+      if (savedCount === 3) return { pose: 'celebrating', message: "Nice picks! Tap another team tab to keep going. Come back anytime to change your selections before the host moves on." };
+      return { pose: 'thinking', message: `Pick 3 players for this team. Stars ⭐ highlight the squad's standout players — great picks to start with!` };
+    }
+    if (game?.status === 'selecting_captain') {
+      if (captainSaved) return { pose: 'celebrating', message: "Captain locked in! They'll earn double points all tournament. Sit tight for the host to kick things off." };
+      return { pose: 'thinking', message: "Pick one player to be your captain — they score double points for every goal, assist, and clean sheet. Choose your best player!" };
+    }
+    return null;
+  })();
+
   if (gameLoading || playersLoading || teamsLoading) {
     return (
       <div className="loading">
@@ -325,13 +348,22 @@ export default function DraftView() {
       {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
 
       {/* Phase header */}
-      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+      <div style={{ textAlign: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--gold)' }}>
           {game?.status === 'drafting_teams' && '🏳️ Team Draft'}
           {game?.status === 'selecting_players' && '👥 Pick Your Players'}
           {game?.status === 'selecting_captain' && '👑 Choose Your Captain'}
         </h1>
       </div>
+
+      {/* Mascot hint */}
+      {mascotHint && (
+        <MascotHint
+          message={mascotHint.message}
+          pose={mascotHint.pose}
+          style={{ marginBottom: 20 }}
+        />
+      )}
 
       {/* PHASE: drafting_teams */}
       {game?.status === 'drafting_teams' && (
@@ -357,37 +389,6 @@ export default function DraftView() {
           {/* My squad */}
           <SquadBuilder picks={picks} teams={teams} myPlayerId={myPlayerId} />
 
-          {/* Status message */}
-          {isMyTurn && !draftComplete && (
-            <div
-              className="card"
-              style={{
-                textAlign: 'center',
-                borderColor: 'var(--gold)',
-                background: 'rgba(255,215,0,0.05)',
-                marginBottom: 16,
-                padding: '12px 16px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                <Mascot pose="excited" size={52} />
-                <span style={{ color: 'var(--gold)', fontWeight: 700, fontSize: '1.05rem' }}>
-                  It&apos;s your turn to pick!
-                </span>
-              </div>
-            </div>
-          )}
-          {!isMyTurn && !draftComplete && (
-            <div className="card" style={{ textAlign: 'center', marginBottom: 16, padding: '12px 16px' }}>
-              <span className="text-muted">
-                Waiting for{' '}
-                <strong style={{ color: 'var(--text)' }}>
-                  {players[currentPickerIndex]?.player_name || '...'}
-                </strong>{' '}
-                to pick
-              </span>
-            </div>
-          )}
 
           {draftComplete && isHost && (
             <div className="card" style={{ textAlign: 'center', marginBottom: 16 }}>
@@ -481,9 +482,6 @@ export default function DraftView() {
       {/* PHASE: selecting_players */}
       {game?.status === 'selecting_players' && (
         <>
-          <p className="text-muted text-center mb-16">
-            Pick 3 players from each of your 8 teams
-          </p>
 
           {isHost && (
             <div className="card mb-16" style={{ textAlign: 'center' }}>
@@ -578,9 +576,6 @@ export default function DraftView() {
       {/* PHASE: selecting_captain */}
       {game?.status === 'selecting_captain' && (
         <>
-          <p className="text-muted text-center mb-16">
-            Your captain earns double points throughout the tournament
-          </p>
 
           {isHost && (
             <div className="card mb-16" style={{ textAlign: 'center' }}>

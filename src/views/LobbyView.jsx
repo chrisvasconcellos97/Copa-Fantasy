@@ -5,6 +5,7 @@ import { usePlayers } from '../hooks/usePlayers';
 import { getSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import CopyCode from '../components/CopyCode';
+import MascotHint from '../components/MascotHint';
 
 export default function LobbyView() {
   const { gameId } = useParams();
@@ -126,9 +127,20 @@ export default function LobbyView() {
         )}
       </div>
 
+      {/* Mascot hint */}
+      <MascotHint
+        pose={isHost ? 'idle' : 'waiting'}
+        message={
+          isHost
+            ? `Share the code above with your friends. Once everyone's in, hit Start Draft — you'll pick teams in a snake order across all 4 pots.`
+            : `You're in! Waiting for the host to start the draft. In the draft you'll take turns picking national teams across 4 pots — strongest nations first.`
+        }
+        style={{ marginTop: 20 }}
+      />
+
       {/* Host actions */}
       {isHost ? (
-        <div className="mt-24">
+        <div className="mt-16">
           <button
             className="btn btn-primary btn-full btn-lg"
             onClick={handleStartDraft}
@@ -141,12 +153,9 @@ export default function LobbyView() {
           </p>
         </div>
       ) : (
-        <div className="card mt-24" style={{ textAlign: 'center', padding: 24 }}>
+        <div className="card mt-16" style={{ textAlign: 'center', padding: 24 }}>
           <div style={{ fontSize: '2rem', marginBottom: 8 }}>⏳</div>
           <p style={{ fontWeight: 600 }}>Waiting for host to start the draft...</p>
-          <p className="text-muted text-sm mt-8">
-            The host will start the draft once everyone has joined.
-          </p>
         </div>
       )}
     </div>
