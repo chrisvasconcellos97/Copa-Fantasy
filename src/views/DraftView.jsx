@@ -73,10 +73,10 @@ export default function DraftView() {
         // Build from fallback pots — use negative numeric IDs to avoid DB integer constraint
         const fallback = [];
         let fakeId = -1;
-        for (const [pot, names] of Object.entries(FALLBACK_POTS)) {
-          for (const name of names) {
-            const code = name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6);
-            fallback.push({ api_id: fakeId--, code, name, logo_url: null, pot: parseInt(pot) });
+        for (const [pot, teams] of Object.entries(FALLBACK_POTS)) {
+          for (const team of teams) {
+            const code = team.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6);
+            fallback.push({ api_id: fakeId--, code, name: team.name, logo_url: team.logo || null, pot: parseInt(pot) });
           }
         }
         setTeams(fallback);
