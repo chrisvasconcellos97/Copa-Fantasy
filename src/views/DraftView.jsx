@@ -80,6 +80,9 @@ export default function DraftView() {
   const [savedPlayerPicks, setSavedPlayerPicks] = useState([]);
   const [playerPicksLoading, setPlayerPicksLoading] = useState(false);
 
+  // Captain phase: enriched player objects for CaptainGrid
+  const [captainPlayers, setCaptainPlayers] = useState([]);
+
   // Captain state
   const [captainPickId, setCaptainPickId] = useState(null);
   const [captainSaved, setCaptainSaved] = useState(false);
@@ -121,7 +124,7 @@ export default function DraftView() {
 
   // Load player picks for player selection phase
   useEffect(() => {
-    if (game?.status !== 'selecting_players') return;
+    if (game?.status !== 'selecting_players' && game?.status !== 'selecting_captain') return;
     async function loadPlayerPicks() {
       setPlayerPicksLoading(true);
       const { data } = await supabase
@@ -166,6 +169,15 @@ export default function DraftView() {
 
     if (squad) setTeamPlayers(prev => ({ ...prev, [teamApiId]: squad }));
   }
+
+  // Load enriched player details for captain selection grid
+  useEffect(() => {
+    if (game?.status !== 'selecting_captain' || savedPlayerPicks.length === 0) return;
+    const ids = savedPlayerPicks.map(p => p.player_api_id);
+    supabase.from('players').select('*').in('api_id', ids).then(({ data }) => {
+      if (data) setCaptainPlayers(data.map(p => ({ ...p, isTop: p.is_top || false, rating: p.overall ?? null })));
+    });
+  }, [game?.status, savedPlayerPicks]);
 
   // Re-populate checkbox state from DB picks after refresh
   useEffect(() => {
@@ -703,17 +715,7 @@ export default function DraftView() {
 
           <div className="card">
             <CaptainGrid
-              playerPicks={(() => {
-                // Build player objects from savedPlayerPicks + teamPlayers cache
-                const all = [];
-                for (const pp of savedPlayerPicks) {
-                  for (const tPlayers of Object.values(teamPlayers)) {
-                    const found = tPlayers.find((p) => p.api_id === pp.player_api_id);
-                    if (found) { all.push(found); break; }
-                  }
-                }
-                return all;
-              })()}
+              playerPicks={captainPlayers}
               captainPickId={captainPickId}
               onSelectCaptain={(player) => {
                 setCaptainPickId(player.api_id);
