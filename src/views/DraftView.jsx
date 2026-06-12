@@ -373,26 +373,30 @@ export default function DraftView() {
       if (updated.length === 3) {
         const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
         if (draftPick) setTimeout(() => _savePicksForTeam(teamApiId, updated, draftPick), 0);
+        else alert(`Auto-save skipped: no draft pick found.\n\nmyPlayerId=${myPlayerId}, teamApiId=${teamApiId}\npicks=${JSON.stringify(picks.slice(0,2))}`);
       }
       return { ...prev, [teamApiId]: updated };
     });
   }
 
   async function _savePicksForTeam(teamApiId, playerIds, draftPick) {
-    await supabase.from('player_picks').delete()
+    const { error: delErr } = await supabase.from('player_picks').delete()
       .eq('game_id', gameId).eq('game_player_id', myPlayerId).eq('draft_pick_id', draftPick.id);
+    if (delErr) { alert(`Delete failed: ${delErr.message}`); return false; }
     const inserts = playerIds.map((pid) => ({
-      game_id: gameId, game_player_id: myPlayerId, draft_pick_id: draftPick.id, player_api_id: pid,
+      game_id: gameId, game_player_id: myPlayerId, draft_pick_id: draftPick.id, player_api_id: Number(pid),
     }));
     const { error } = await supabase.from('player_picks').insert(inserts);
-    if (!error) {
-      setSavedPlayerPicks((prev) => {
-        const filtered = prev.filter((p) => p.draft_pick_id !== draftPick.id);
-        return [...filtered, ...inserts.map((i, idx) => ({ ...i, id: `temp-${idx}` }))];
-      });
-      setDashRefresh(n => n + 1);
+    if (error) {
+      alert(`Save failed: ${error.message}\n\nDebug: gameId=${gameId}, playerId=${myPlayerId}, draftPickId=${draftPick.id}, playerIds=${playerIds.join(',')}`);
+      return false;
     }
-    return !error;
+    setSavedPlayerPicks((prev) => {
+      const filtered = prev.filter((p) => p.draft_pick_id !== draftPick.id);
+      return [...filtered, ...inserts.map((i, idx) => ({ ...i, id: `temp-${idx}` }))];
+    });
+    setDashRefresh(n => n + 1);
+    return true;
   }
 
   async function handleSavePlayerPicks(teamApiId) {
