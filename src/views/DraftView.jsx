@@ -221,6 +221,20 @@ export default function DraftView() {
     if (error) alert('Error: ' + error.message);
   }
 
+  // Auto-pick: best available player per position (prefers isTop, then first listed)
+  function handleAutoPick(teamApiId) {
+    const squad = teamPlayers[teamApiId] || [];
+    const positions = ['GK', 'DEF', 'MID', 'FWD'];
+    const picked = [];
+    for (const pos of positions) {
+      if (picked.length >= 3) break;
+      const candidates = squad.filter(p => normalizePosition(p.position) === pos);
+      const best = candidates.find(p => p.isTop) || candidates[0];
+      if (best) picked.push(best.api_id);
+    }
+    setSelectedPlayerIds(prev => ({ ...prev, [teamApiId]: picked }));
+  }
+
   // Toggle player selection — one per position (GK / DEF / MID / FWD)
   function togglePlayerPick(teamApiId, playerApiId) {
     const squad = teamPlayers[teamApiId] || [];
@@ -556,16 +570,25 @@ export default function DraftView() {
                         const sel = selectedPlayerIds[activeTeamTab] || [];
                         const squad = teamPlayers[activeTeamTab] || [];
                         const posPicked = sel.map(id => normalizePosition(squad.find(p => p.api_id === id)?.position)).filter(Boolean);
-                        return `Pick 3 (max 1 per position) — ${sel.length}/3 selected${posPicked.length ? ': ' + posPicked.join(', ') : ''}`;
+                        return `${sel.length}/3${posPicked.length ? ' — ' + posPicked.join(', ') : ''}`;
                       })()}
                     </span>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleSavePlayerPicks(activeTeamTab)}
-                      disabled={(selectedPlayerIds[activeTeamTab] || []).length === 0}
-                    >
-                      Save Picks
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-sm"
+                        style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+                        onClick={() => handleAutoPick(activeTeamTab)}
+                      >
+                        ⚡ Auto Pick
+                      </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleSavePlayerPicks(activeTeamTab)}
+                        disabled={(selectedPlayerIds[activeTeamTab] || []).length === 0}
+                      >
+                        Save
+                      </button>
+                    </div>
                   </div>
                   <div className="card-grid">
                     {teamPlayers[activeTeamTab].map((player) => {
