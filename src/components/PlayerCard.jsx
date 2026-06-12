@@ -32,27 +32,20 @@ export default function PlayerCard({ player, selected, onClick, showPosition = t
         position: 'relative',
       }}
     >
-      {/* Top 10 star badge */}
-      {isTop && (
-        <div style={{
+      {/* Rating badge */}
+      {player?.rating && (
+        <span style={{
           position: 'absolute',
           top: 4,
           right: 4,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 1,
-        }}>
-          <span style={{ fontSize: '0.75rem', lineHeight: 1 }}>⭐</span>
-          {player.rating && (
-            <span style={{
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              color: 'var(--gold)',
-              lineHeight: 1,
-            }}>{player.rating}</span>
-          )}
-        </div>
+          fontSize: '0.65rem',
+          fontWeight: 800,
+          color: isTop ? '#1a1a1a' : 'var(--text-muted)',
+          background: isTop ? 'var(--gold)' : 'rgba(255,255,255,0.1)',
+          borderRadius: 4,
+          padding: '2px 5px',
+          lineHeight: 1.2,
+        }}>{player.rating}</span>
       )}
 
       {/* Photo */}

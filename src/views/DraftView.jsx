@@ -116,7 +116,7 @@ export default function DraftView() {
     let squad;
     if (data && data.length > 0) {
       // Normalize is_top (snake_case from DB) to isTop
-      squad = data.map(p => ({ ...p, isTop: p.is_top || p.isTop || false }));
+      squad = data.map(p => ({ ...p, isTop: p.is_top || p.isTop || false, rating: p.overall ?? p.rating ?? null }));
     } else {
       const team = teams.find(t => String(t.api_id) === String(teamApiId) || t.api_id === teamApiId);
       const raw = team ? getSquadForTeam(team.name) : null;
