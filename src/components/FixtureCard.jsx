@@ -94,9 +94,9 @@ export default function FixtureCard({ fixture, myTeamApiIds = [], isLive }) {
               {formatTime(fixture.kickoff) || 'TBD'}
             </span>
           )}
-          {fixture.elapsed && isLive && (
-            <div style={{ fontSize: '0.7rem', color: 'var(--danger)', marginTop: 2 }}>
-              {fixture.elapsed}&apos;
+          {isLive && (fixture.elapsed || fixture.status_short) && (
+            <div style={{ fontSize: '0.7rem', color: 'var(--danger)', marginTop: 2, fontWeight: 700 }}>
+              {fixture.elapsed ? `${fixture.elapsed}'` : fixture.status_short}
             </div>
           )}
         </div>

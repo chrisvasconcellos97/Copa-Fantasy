@@ -5,6 +5,7 @@ import LobbyView from './views/LobbyView';
 import DraftView from './views/DraftView';
 import MatchCenterView from './views/MatchCenterView';
 import LeaderboardView from './views/LeaderboardView';
+import StatsView from './views/StatsView';
 import PointsModal from './components/PointsModal';
 import { getSession, clearSession } from './lib/session';
 
@@ -48,6 +49,13 @@ function Nav() {
           >
             Matches
           </NavLink>
+          <NavLink
+            to="/stats"
+            className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+            style={{ textDecoration: 'none' }}
+          >
+            Stats
+          </NavLink>
           {session?.gameId && (
             <NavLink
               to={`/leaderboard/${session.gameId}`}
@@ -84,6 +92,7 @@ export default function App() {
           <Route path="/draft/:gameId" element={<DraftView />} />
           <Route path="/matches" element={<MatchCenterView />} />
           <Route path="/leaderboard/:gameId" element={<LeaderboardView />} />
+          <Route path="/stats" element={<StatsView />} />
         </Routes>
       </div>
     </BrowserRouter>

@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
-import { getSession } from '../lib/session.js';
 import FixtureCard from '../components/FixtureCard.jsx';
-import EventTicker from '../components/EventTicker.jsx';
+import MatchDetail from '../components/MatchDetail.jsx';
 import Mascot from '../components/Mascot.jsx';
 import { useLiveSync } from '../hooks/useLiveSync.js';
 
@@ -16,15 +15,16 @@ function groupByDate(fixtures) {
   return groups;
 }
 
-const LIVE_STATUSES = ['1H', '2H', 'HT', 'ET', 'P', 'LIVE'];
+function isLiveFixture(fixture) {
+  if (fixture.elapsed !== null && fixture.elapsed !== undefined) return true;
+  const s = fixture.status_short;
+  return ['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'in'].includes(s) || /^\d+'$/.test(s || '');
+}
 
 export default function MatchCenterView() {
   const [fixtures, setFixtures] = useState([]);
-  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedFixture, setExpandedFixture] = useState(null);
-  const session = getSession();
-
   useLiveSync();
 
   useEffect(() => {
@@ -41,16 +41,7 @@ export default function MatchCenterView() {
       }
     }
 
-    async function loadEvents() {
-      const { data } = await supabase
-        .from('match_events')
-        .select('*')
-        .order('minute', { ascending: true });
-      if (mounted) setEvents(data || []);
-    }
-
     loadFixtures();
-    loadEvents();
 
     const fixtureChannel = supabase
       .channel('fixtures-live')
@@ -59,12 +50,6 @@ export default function MatchCenterView() {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fixtures' }, payload => {
         if (mounted) setFixtures(prev => [...prev, payload.new]);
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'match_events' }, payload => {
-        if (mounted) setEvents(prev => [...prev, payload.new]);
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'match_events' }, payload => {
-        if (mounted) setEvents(prev => prev.map(e => e.id === payload.new.id ? payload.new : e));
       })
       .subscribe();
 
@@ -75,7 +60,7 @@ export default function MatchCenterView() {
   }, []);
 
   const grouped = groupByDate(fixtures);
-  const liveFixtures = fixtures.filter(f => LIVE_STATUSES.includes(f.status));
+  const liveFixtures = fixtures.filter(isLiveFixture);
 
   return (
     <div className="page-wide">
@@ -89,7 +74,6 @@ export default function MatchCenterView() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {liveFixtures.map(fixture => {
-              const fixtureEvents = events.filter(e => e.fixture_api_id === fixture.api_id);
               return (
                 <div key={fixture.id}>
                   <div onClick={() => setExpandedFixture(expandedFixture === fixture.id ? null : fixture.id)}
@@ -98,7 +82,7 @@ export default function MatchCenterView() {
                   </div>
                   {expandedFixture === fixture.id && (
                     <div style={{ marginTop: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
-                      <EventTicker events={fixtureEvents} myPlayerApiIds={[]} myTeamApiIds={[]} />
+                      <MatchDetail fixture={fixture} />
                     </div>
                   )}
                 </div>
@@ -122,7 +106,7 @@ export default function MatchCenterView() {
             <div className="section-header">{date}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {dayFixtures.map(fixture => {
-                const isLive = LIVE_STATUSES.includes(fixture.status);
+                const isLive = isLiveFixture(fixture);
                 return (
                   <div key={fixture.id}>
                     <div onClick={() => setExpandedFixture(expandedFixture === fixture.id ? null : fixture.id)}
@@ -131,11 +115,7 @@ export default function MatchCenterView() {
                     </div>
                     {expandedFixture === fixture.id && (
                       <div style={{ marginTop: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 12 }}>
-                        <EventTicker
-                          events={events.filter(e => e.fixture_api_id === fixture.api_id)}
-                          myPlayerApiIds={[]}
-                          myTeamApiIds={[]}
-                        />
+                        <MatchDetail fixture={fixture} />
                       </div>
                     )}
                   </div>
