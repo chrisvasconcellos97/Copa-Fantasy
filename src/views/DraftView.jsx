@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
@@ -9,7 +9,6 @@ import { supabase } from '../lib/supabase';
 import { FALLBACK_POTS } from '../lib/constants';
 import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
 import { getSquadForTeam } from '../lib/wcSquads';
-import { apiFetch } from '../lib/apiFootball';
 import TeamCard from '../components/TeamCard';
 import Mascot from '../components/Mascot';
 import PlayerCard from '../components/PlayerCard';
@@ -46,9 +45,6 @@ export default function DraftView() {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState({}); // teamId -> [playerId]
   const [savedPlayerPicks, setSavedPlayerPicks] = useState([]);
   const [playerPicksLoading, setPlayerPicksLoading] = useState(false);
-
-  // Ratings cache: teamApiId -> true (already fetched)
-  const ratingsFetched = useRef({});
 
   // Captain state
   const [captainPickId, setCaptainPickId] = useState(null);
@@ -105,55 +101,10 @@ export default function DraftView() {
     loadPlayerPicks();
   }, [game?.status, gameId, myPlayerId]);
 
-  // Fetch API-Football ratings for a team and merge isTop flag into players state
-  async function enrichWithRatings(teamApiId, squad) {
-    if (ratingsFetched.current[teamApiId]) return;
-    if (!(Number(teamApiId) > 0)) return; // fallback teams have no real api_id
-    ratingsFetched.current[teamApiId] = true;
-    try {
-      // Fetch both pages to cover full 26-man squad
-      const [p1, p2] = await Promise.all([
-        apiFetch('/players', { team: teamApiId, season: 2026, page: 1 }),
-        apiFetch('/players', { team: teamApiId, season: 2026, page: 2 }),
-      ]);
-      const apiPlayers = [...(p1 || []), ...(p2 || [])];
-      if (!apiPlayers.length) return;
-
-      // Build map: api_id -> rating
-      const ratingMap = {};
-      for (const entry of apiPlayers) {
-        const rating = parseFloat(entry.statistics?.[0]?.games?.rating);
-        if (entry.player?.id && !isNaN(rating)) {
-          ratingMap[String(entry.player.id)] = rating;
-        }
-      }
-      if (!Object.keys(ratingMap).length) return;
-
-      // Sort squad by rating desc, mark top 10
-      const scored = squad.map(p => ({
-        ...p,
-        _rating: ratingMap[String(p.api_id)] ?? 0,
-      })).sort((a, b) => b._rating - a._rating);
-
-      const enriched = scored.map((p, i) => ({
-        ...p,
-        rating: p._rating > 0 ? p._rating.toFixed(1) : null,
-        isTop: i < 10 && p._rating > 0,
-      }));
-
-      setTeamPlayers(prev => ({ ...prev, [teamApiId]: enriched }));
-    } catch (e) {
-      // Ratings unavailable — silently ignore, squad still shows without highlights
-    }
-  }
 
   // Load players for a team — falls back to hardcoded WC squads if DB is empty
   async function loadTeamPlayers(teamApiId) {
-    if (teamPlayers[teamApiId]) {
-      // Already loaded — still try to enrich if not yet done
-      enrichWithRatings(teamApiId, teamPlayers[teamApiId]);
-      return;
-    }
+    if (teamPlayers[teamApiId]) return;
     const { data } = await supabase
       .from('players')
       .select('*')
@@ -174,13 +125,11 @@ export default function DraftView() {
         position: p.position,
         photo_url: null,
         number: null,
+        isTop: p.isTop || false,
       })) : null;
     }
 
-    if (squad) {
-      setTeamPlayers(prev => ({ ...prev, [teamApiId]: squad }));
-      enrichWithRatings(teamApiId, squad);
-    }
+    if (squad) setTeamPlayers(prev => ({ ...prev, [teamApiId]: squad }));
   }
 
   // Load captain pick
