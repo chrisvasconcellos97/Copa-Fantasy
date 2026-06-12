@@ -22,7 +22,7 @@ import MascotHint from '../components/MascotHint';
 
 const TOTAL_ROUNDS = 8;
 
-function HostSetupDashboard({ players, gameId, totalPicks, onStart }) {
+function HostSetupDashboard({ players, gameId, totalPicks, onStart, refreshKey }) {
   const [pickCounts, setPickCounts] = React.useState({});
   const [captainCounts, setCaptainCounts] = React.useState({});
 
@@ -44,7 +44,7 @@ function HostSetupDashboard({ players, gameId, totalPicks, onStart }) {
     load();
     const interval = setInterval(load, 10000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [gameId]);
+  }, [gameId, refreshKey]);
 
   const allDone = players.every(p => (pickCounts[p.id] || 0) >= totalPicks && captainCounts[p.id]);
 
@@ -105,6 +105,7 @@ export default function DraftView() {
 
   // Captain phase: enriched player objects for CaptainGrid
   const [captainPlayers, setCaptainPlayers] = useState([]);
+  const [dashRefresh, setDashRefresh] = useState(0);
 
   // Captain state
   const [captainPickId, setCaptainPickId] = useState(null);
@@ -336,7 +337,13 @@ export default function DraftView() {
       if (best) { picked.push(best.api_id); pickedIds.add(best.api_id); pickedPositions.add(pos); }
     }
 
-    setSelectedPlayerIds(prev => ({ ...prev, [teamApiId]: picked }));
+    const next = { ...selectedPlayerIds, [teamApiId]: picked };
+    setSelectedPlayerIds(next);
+    // Auto-save immediately (3 picks chosen)
+    if (picked.length === 3) {
+      const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
+      if (draftPick) _savePicksForTeam(teamApiId, picked, draftPick);
+    }
   }
 
   // Toggle player selection — one per position (GK / DEF / MID / FWD)
@@ -361,42 +368,53 @@ export default function DraftView() {
       }
       // Don't exceed 3 total
       if (current.length >= 3) return prev;
-      return { ...prev, [teamApiId]: [...current, playerApiId] };
+      const updated = [...current, playerApiId];
+      // Auto-save when 3rd player selected
+      if (updated.length === 3) {
+        const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
+        if (draftPick) setTimeout(() => _savePicksForTeam(teamApiId, updated, draftPick), 0);
+      }
+      return { ...prev, [teamApiId]: updated };
     });
+  }
+
+  async function _savePicksForTeam(teamApiId, playerIds, draftPick) {
+    await supabase.from('player_picks').delete()
+      .eq('game_id', gameId).eq('game_player_id', myPlayerId).eq('draft_pick_id', draftPick.id);
+    const inserts = playerIds.map((pid) => ({
+      game_id: gameId, game_player_id: myPlayerId, draft_pick_id: draftPick.id, player_api_id: pid,
+    }));
+    const { error } = await supabase.from('player_picks').insert(inserts);
+    if (!error) {
+      setSavedPlayerPicks((prev) => {
+        const filtered = prev.filter((p) => p.draft_pick_id !== draftPick.id);
+        return [...filtered, ...inserts.map((i, idx) => ({ ...i, id: `temp-${idx}` }))];
+      });
+      setDashRefresh(n => n + 1);
+    }
+    return !error;
   }
 
   async function handleSavePlayerPicks(teamApiId) {
     const playerIds = selectedPlayerIds[teamApiId] || [];
     if (playerIds.length === 0) return;
-
-    // Find the draft_pick for this team (links player_picks back to the team)
     const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
     if (!draftPick) { alert('Draft pick not found for this team'); return; }
+    const ok = await _savePicksForTeam(teamApiId, playerIds, draftPick);
+    if (!ok) alert('Failed to save picks for this team.');
+  }
 
-    // Remove old picks for this draft_pick
-    await supabase
-      .from('player_picks')
-      .delete()
-      .eq('game_id', gameId)
-      .eq('game_player_id', myPlayerId)
-      .eq('draft_pick_id', draftPick.id);
-
-    // Insert new picks
-    const inserts = playerIds.map((pid) => ({
-      game_id: gameId,
-      game_player_id: myPlayerId,
-      draft_pick_id: draftPick.id,
-      player_api_id: pid,
-    }));
-    const { error } = await supabase.from('player_picks').insert(inserts);
-    if (error) {
-      alert('Failed to save: ' + error.message);
-    } else {
-      setSavedPlayerPicks((prev) => {
-        const filtered = prev.filter((p) => p.draft_pick_id !== draftPick.id);
-        return [...filtered, ...inserts.map((i, idx) => ({ ...i, id: `temp-${idx}` }))];
-      });
+  async function handleLockInSquad() {
+    const myTeamIds = myTeams.map(t => t.api_id);
+    let allOk = true;
+    for (const teamApiId of myTeamIds) {
+      const playerIds = selectedPlayerIds[teamApiId] || [];
+      if (playerIds.length !== 3) { allOk = false; continue; }
+      const draftPick = picks.find((p) => p.game_player_id === myPlayerId && (String(p.team_api_id) === String(teamApiId) || p.team_code === String(teamApiId)));
+      if (!draftPick) { allOk = false; continue; }
+      await _savePicksForTeam(teamApiId, playerIds, draftPick);
     }
+    if (!allOk) alert('Some teams are missing picks — make sure each team has exactly 3 players selected.');
   }
 
   async function handleSaveCaptain() {
@@ -618,8 +636,39 @@ export default function DraftView() {
               gameId={gameId}
               totalPicks={TOTAL_ROUNDS * 3}
               onStart={handleAdvancePhase}
+              refreshKey={dashRefresh}
             />
           )}
+
+          {/* Progress + Lock In bar */}
+          {savedPlayerPicks.length < TOTAL_ROUNDS * 3 && (() => {
+            const savedTeams = myTeams.filter(t => {
+              const dp = picks.find(p => p.game_player_id === myPlayerId && String(p.team_api_id) === String(t.api_id));
+              return dp && savedPlayerPicks.filter(pp => pp.draft_pick_id === dp.id).length === 3;
+            });
+            const selectedTeams = myTeams.filter(t => (selectedPlayerIds[t.api_id] || []).length === 3);
+            const allSelected = selectedTeams.length === TOTAL_ROUNDS;
+            return (
+              <div className="card mb-16" style={{ padding: '12px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {savedTeams.length}/{TOTAL_ROUNDS} teams locked in
+                  </span>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleLockInSquad}
+                    disabled={!allSelected}
+                    style={{ opacity: allSelected ? 1 : 0.5 }}
+                  >
+                    🔒 Lock In Squad
+                  </button>
+                </div>
+                <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${(savedTeams.length / TOTAL_ROUNDS) * 100}%`, background: 'var(--success)', borderRadius: 3, transition: 'width 0.3s' }} />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Show captain UI once all player picks are saved */}
           {savedPlayerPicks.length >= TOTAL_ROUNDS * 3 ? (
