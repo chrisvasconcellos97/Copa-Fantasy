@@ -8,6 +8,7 @@ import { getSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { FALLBACK_POTS } from '../lib/constants';
 import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
+import { getSquadForTeam } from '../lib/wcSquads';
 import TeamCard from '../components/TeamCard';
 import Mascot from '../components/Mascot';
 import PlayerCard from '../components/PlayerCard';
@@ -100,17 +101,33 @@ export default function DraftView() {
     loadPlayerPicks();
   }, [game?.status, gameId, myPlayerId]);
 
-  // Load players for a team
+  // Load players for a team — falls back to hardcoded WC squads if DB is empty
   async function loadTeamPlayers(teamApiId) {
     if (teamPlayers[teamApiId]) return;
     const { data } = await supabase
       .from('players')
       .select('*')
-      .eq('team_api_id', teamApiId)
+      .eq('team_api_id', String(teamApiId))
       .order('position')
       .order('name');
-    if (data) {
+    if (data && data.length > 0) {
       setTeamPlayers((prev) => ({ ...prev, [teamApiId]: data }));
+    } else {
+      // Fallback: look up team name and use hardcoded squad
+      const team = teams.find(t => String(t.api_id) === String(teamApiId) || t.api_id === teamApiId);
+      const squad = team ? getSquadForTeam(team.name) : null;
+      if (squad) {
+        // Normalise to the shape the rest of the UI expects
+        const normalised = squad.map(p => ({
+          api_id: p.id,
+          team_api_id: String(teamApiId),
+          name: p.name,
+          position: p.position,
+          photo_url: null,
+          number: null,
+        }));
+        setTeamPlayers((prev) => ({ ...prev, [teamApiId]: normalised }));
+      }
     }
   }
 
