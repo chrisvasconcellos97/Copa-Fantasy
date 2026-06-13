@@ -117,6 +117,11 @@ export default function LobbyView() {
     }
   }
 
+  async function handleBootPlayer(playerId) {
+    if (!confirm('Remove this player from the lobby?')) return;
+    await supabase.from('game_players').delete().eq('id', playerId);
+  }
+
   async function handleStartDraft() {
     if (players.length < 1) {
       alert('Need at least 1 player to start the draft.');
@@ -243,6 +248,13 @@ export default function LobbyView() {
                 )}
                 {!showSplit && player.is_host && (
                   <span className="badge badge-gold">HOST</span>
+                )}
+                {isHost && !player.is_host && !showSplit && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleBootPlayer(player.id); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '0.8rem', padding: '2px 6px', opacity: 0.6 }}
+                    title="Remove player"
+                  >✕</button>
                 )}
               </div>
             ))}
