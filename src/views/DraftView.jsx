@@ -116,6 +116,9 @@ export default function DraftView() {
     if (game?.status === 'tournament' || game?.status === 'complete') {
       navigate(`/leaderboard/${gameId}`, { replace: true });
     }
+    if (game?.status === 'lobby') {
+      navigate(`/lobby/${gameId}`, { replace: true });
+    }
   }, [game, gameId, navigate]);
 
   // Load teams
