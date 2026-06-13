@@ -247,9 +247,9 @@ export default function DraftView() {
   const currentPickerIndex = getCurrentPicker(picks, players, TOTAL_ROUNDS);
   const myPicks = picks.filter((p) => p.game_player_id === myPlayerId);
 
-  // Pot gating: rounds 1-2 = pot 1, 3-4 = pot 2, 5-6 = pot 3, 7-8 = pot 4
+  // Pot gating: divide rounds evenly across 4 pots based on TOTAL_ROUNDS
   const currentRound = players.length > 0 ? Math.floor(picks.length / players.length) + 1 : 1;
-  const activePot = Math.min(4, Math.ceil(currentRound / 2));
+  const activePot = Math.min(4, Math.ceil((currentRound * 4) / TOTAL_ROUNDS));
   const isMyTurn = players[currentPickerIndex]?.id === myPlayerId;
   const draftComplete = picks.length >= players.length * TOTAL_ROUNDS;
 
