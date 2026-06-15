@@ -116,7 +116,7 @@ export default function DraftView() {
     if (game?.status === 'tournament' || game?.status === 'complete') {
       navigate(`/leaderboard/${gameId}`, { replace: true });
     }
-    if (game?.status === 'lobby') {
+    if (game?.status === 'lobby' && !isHost) {
       navigate(`/lobby/${gameId}`, { replace: true });
     }
   }, [game, gameId, navigate]);
@@ -513,6 +513,22 @@ export default function DraftView() {
     );
   }
 
+  // Observer (host) viewing a group still in lobby — show start button
+  if (isHost && game?.status === 'lobby') {
+    return (
+      <div className="page page-narrow">
+        <div className="card" style={{ textAlign: 'center' }}>
+          <p style={{ fontWeight: 700, marginBottom: 8 }}>👁 Viewing Group B</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 16 }}>Group B's draft hasn't started yet.</p>
+          <button className="btn btn-primary btn-full btn-lg" onClick={async () => {
+            await supabase.from('games').update({ status: 'drafting_teams' }).eq('id', gameId);
+          }}>🚀 Start Group B Draft</button>
+          <button className="btn btn-full mt-8" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }} onClick={() => navigate(-1)}>← Back to Group A</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page" style={{ paddingBottom: 100 }}>
       {showPoke && <PokeToast message={pokeMessage} onDismiss={dismissPoke} />}
@@ -531,15 +547,36 @@ export default function DraftView() {
       )}
       {/* Group B observer banner — shown when host is viewing linked game without a player record */}
       {isObserver && (
-        <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--info)', fontWeight: 600 }}>👁 Viewing Group B</span>
-          <button
-            className="btn btn-sm"
-            style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-            onClick={() => navigate(-1)}
-          >
-            ← Back to Group A
-          </button>
+        <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 'var(--radius)', padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--info)', fontWeight: 600 }}>👁 Viewing Group B</span>
+            <button
+              className="btn btn-sm"
+              style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+              onClick={() => navigate(-1)}
+            >
+              ← Back to Group A
+            </button>
+          </div>
+          {game?.status === 'drafting_teams' && !draftComplete && (
+            <button
+              className="btn btn-primary btn-full"
+              style={{ marginTop: 10 }}
+              onClick={handleAdvancePhase}
+            >
+              🚀 Start Group B Draft
+            </button>
+          )}
+          {game?.status === 'drafting_teams' && draftComplete && (
+            <button className="btn btn-primary btn-full" style={{ marginTop: 10 }} onClick={handleAdvancePhase}>
+              Advance Group B → Player Selection
+            </button>
+          )}
+          {(game?.status === 'selecting_players' || game?.status === 'selecting_captain') && (
+            <button className="btn btn-primary btn-full" style={{ marginTop: 10 }} onClick={handleAdvancePhase}>
+              Start Group B Tournament →
+            </button>
+          )}
         </div>
       )}
 
