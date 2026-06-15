@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Mascot from '../components/Mascot';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,6 +17,35 @@ function generateJoinCode() {
 export default function HomeView() {
   const navigate = useNavigate();
   const [tab, setTab] = useState('create');
+
+  // Auto-restore session from ?pt=<playerToken> deep link
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pt = params.get('pt');
+    if (!pt) return;
+    (async () => {
+      const { data: gp } = await supabase
+        .from('game_players')
+        .select('id, player_name, is_host, game_id, token')
+        .eq('token', pt)
+        .single();
+      if (!gp) return;
+      const { data: game } = await supabase.from('games').select('*').eq('id', gp.game_id).single();
+      if (!game) return;
+      setSession({
+        playerId: gp.id,
+        playerName: gp.player_name,
+        playerToken: gp.token,
+        hostToken: gp.is_host ? game.host_token : null,
+        gameId: game.id,
+      });
+      localStorage.setItem('cf_game_id', game.id);
+      window.history.replaceState({}, '', '/');
+      if (game.status === 'lobby') navigate(`/lobby/${game.id}`);
+      else if (['drafting_teams', 'selecting_players', 'selecting_captain'].includes(game.status)) navigate(`/draft/${game.id}`);
+      else navigate(`/leaderboard/${game.id}`);
+    })();
+  }, []);
   const [createName, setCreateName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [joinName, setJoinName] = useState('');
@@ -56,6 +85,7 @@ export default function HomeView() {
       setSession({
         playerId: gamePlayer.id,
         playerName: createName.trim(),
+        playerToken,
         hostToken,
         gameId: game.id,
       });
@@ -100,6 +130,7 @@ export default function HomeView() {
       setSession({
         playerId: gamePlayer.id,
         playerName: gamePlayer.player_name,
+        playerToken: gamePlayer.token,
         hostToken,
         gameId: game.id,
       });
@@ -151,6 +182,7 @@ export default function HomeView() {
       setSession({
         playerId: gamePlayer.id,
         playerName: joinName.trim(),
+        playerToken,
         hostToken: null,
         gameId: game.id,
       });

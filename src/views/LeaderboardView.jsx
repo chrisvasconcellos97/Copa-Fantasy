@@ -202,11 +202,32 @@ export default function LeaderboardView() {
   const session = getSession();
   const isHost = Boolean(session?.hostToken);
   const [linkedGameId, setLinkedGameId] = useState(null);
+  const [joinCode, setJoinCode] = useState(null);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
-    supabase.from('games').select('linked_game_id').eq('id', gameId).single()
-      .then(({ data }) => { if (data?.linked_game_id) setLinkedGameId(data.linked_game_id); });
+    supabase.from('games').select('linked_game_id, join_code').eq('id', gameId).single()
+      .then(({ data }) => {
+        if (data?.linked_game_id) setLinkedGameId(data.linked_game_id);
+        if (data?.join_code) setJoinCode(data.join_code);
+      });
   }, [gameId]);
+
+  function copyCode() {
+    navigator.clipboard.writeText(joinCode || '');
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  }
+
+  function copyRejoinLink() {
+    const token = session?.playerToken;
+    if (!token) return;
+    const url = `${window.location.origin}/?pt=${token}`;
+    navigator.clipboard.writeText(url);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
 
   const [teams, setTeams] = useState([]);
   const [fixtures, setFixtures] = useState([]);
@@ -517,6 +538,31 @@ export default function LeaderboardView() {
           )}
         </div>
       </div>
+
+      {/* Game code bar */}
+      {joinCode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          <button
+            onClick={copyCode}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '7px 14px', cursor: 'pointer', flex: 1 }}
+          >
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Code</span>
+            <span style={{ fontWeight: 800, fontSize: '1.1rem', letterSpacing: '0.12em', color: 'var(--gold)', fontFamily: 'monospace' }}>{joinCode}</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: codeCopied ? 'var(--success)' : 'var(--text-muted)' }}>
+              {codeCopied ? '✓ Copied' : '📋 Copy'}
+            </span>
+          </button>
+          {session?.playerToken && (
+            <button
+              onClick={copyRejoinLink}
+              className="btn btn-sm"
+              style={{ border: '1px solid var(--border)', color: linkCopied ? 'var(--success)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}
+            >
+              {linkCopied ? '✓ Copied!' : '🔗 My link'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. Live match cards for MY teams */}
       {liveFixtures.filter(f =>
