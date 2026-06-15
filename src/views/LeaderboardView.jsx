@@ -26,6 +26,7 @@ export default function LeaderboardView() {
   }, [gameId]);
 
   const [teams, setTeams] = useState([]);
+  const [fixtures, setFixtures] = useState([]);
   const [allPlayers, setAllPlayers] = useState([]);
   const [playerPicksAll, setPlayerPicksAll] = useState([]);
   const [captainPicksAll, setCaptainPicksAll] = useState([]);
@@ -49,14 +50,16 @@ export default function LeaderboardView() {
   useEffect(() => {
     async function loadData() {
       const myId = session?.playerId;
-      const [{ data: teamsData }, { data: ppData }, { data: cpData }, { data: subsData }, { data: myPpData }] = await Promise.all([
+      const [{ data: teamsData }, { data: fixturesData }, { data: ppData }, { data: cpData }, { data: subsData }, { data: myPpData }] = await Promise.all([
         supabase.from('teams').select('*'),
+        supabase.from('fixtures').select('api_id, home_team_api_id, away_team_api_id, home_goals, away_goals, round').eq('status_short', 'FT'),
         supabase.from('player_picks').select('*').eq('game_id', gameId),
         supabase.from('captain_picks').select('*').eq('game_id', gameId),
         supabase.from('substitutions').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
         supabase.from('player_picks').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
       ]);
       setTeams(teamsData || []);
+      setFixtures(fixturesData || []);
       setPlayerPicksAll(ppData || []);
       setCaptainPicksAll(cpData || []);
       setMySubstitutions(subsData || []);
@@ -338,6 +341,7 @@ export default function LeaderboardView() {
               playerPicks={playerPicksAll}
               captainPickId={captainMap[player.id]}
               teams={teams}
+              fixtures={fixtures}
               players={allPlayers}
               isExpanded={expandedRow === player.id}
               onToggle={() => setExpandedRow(expandedRow === player.id ? null : player.id)}

@@ -14,6 +14,7 @@ export default function LeaderboardRow({
   playerPicks,
   captainPickId,
   teams,
+  fixtures,
   players,
   isExpanded,
   onToggle,
@@ -40,55 +41,57 @@ export default function LeaderboardRow({
   // Breakdown from score
   const breakdown = score?.breakdown || {};
 
-  function formatBreakdownKey(key, val) {
-    const playerName = (id) => players?.find(p => String(p.api_id) === String(id))?.name || `Player #${id}`;
-    const teamName = (id) => teams?.find(t => String(t.api_id) === String(id))?.name || `Team #${id}`;
+  const playerName = (id) => players?.find(p => String(p.api_id) === String(id))?.name || `#${id}`;
+  const teamByApiId = (id) => teams?.find(t => String(t.api_id) === String(id));
 
-    if (key === 'override') return { label: '✏️ Manual adjustment', icon: '✏️' };
+  function getFixtureId(key) {
+    let m;
+    if ((m = key.match(/^fix_(\d+)$/))) return m[1];
+    if ((m = key.match(/fix(\d+)$/))) return m[1];
+    if ((m = key.match(/^(?:brace|hattrick|dbl_assist)_\d+_(\d+)$/))) return m[1];
+    if ((m = key.match(/^upset_(\d+)$/))) return m[1];
+    return null;
+  }
 
-    // fix_760417 → match win/draw
-    if (/^fix_\d+$/.test(key)) {
-      return { label: val === 3 ? '⚽ Match Win' : '🤝 Match Draw', icon: val === 3 ? '⚽' : '🤝' };
+  function formatEntry(key, val) {
+    let m;
+    if (key === 'override') return '✏️ Manual adjustment';
+    if (/^fix_\d+$/.test(key)) return val === 3 ? 'Match Win' : val === 1 ? 'Match Draw' : 'Match Result';
+    if ((m = key.match(/^golden_boot_(\d+)$/))) return `🥾 Golden Boot — ${playerName(m[1])}`;
+    if ((m = key.match(/^brace_(\d+)_/))) return `⚡ Brace bonus — ${playerName(m[1])}`;
+    if ((m = key.match(/^hattrick_(\d+)_/))) return `🎩 Hat trick bonus — ${playerName(m[1])}`;
+    if ((m = key.match(/^dbl_assist_(\d+)_/))) return `🔑 Double assist bonus — ${playerName(m[1])}`;
+    if ((m = key.match(/^cs_(\d+)_/))) return `🧤 Clean sheet — ${playerName(m[1])}`;
+    if (/^upset_/.test(key)) return '💥 Upset bonus';
+    if ((m = key.match(/^group_finish_(\d+)_r(\d+)$/))) {
+      const t = teamByApiId(m[1]);
+      return m[2] === '1' ? `🏆 Won group — ${t?.name || m[1]}` : `✅ Qualified — ${t?.name || m[1]}`;
     }
-    // golden_boot_282643
-    if (/^golden_boot_(\d+)$/.test(key)) {
-      const [, pid] = key.match(/^golden_boot_(\d+)$/);
-      return { label: `🥾 Golden Boot — ${playerName(pid)}`, icon: '🥾' };
+    if ((m = key.match(/^player_(\d+)_(goal|assist|yellow_card|red_card|own_goal|penalty_save)_/))) {
+      const labels = { goal: '⚽ Goal', assist: '🎯 Assist', yellow_card: '🟨 Yellow card', red_card: '🟥 Red card', own_goal: '😬 Own goal', penalty_save: '🧤 Penalty save' };
+      return `${labels[m[2]]} — ${playerName(m[1])}`;
     }
-    // brace_282643_760417
-    if (/^brace_(\d+)_/.test(key)) {
-      const [, pid] = key.match(/^brace_(\d+)_/);
-      return { label: `⚡ Brace — ${playerName(pid)}`, icon: '⚡' };
+    return key.replace(/_/g, ' ');
+  }
+
+  // Group breakdown entries by fixture, with non-fixture items separate
+  function groupedBreakdown() {
+    const fixtureMap = new Map(); // fixtureId -> { fixture, entries: [{key, val, label}] }
+    const other = [];
+
+    for (const [key, val] of Object.entries(breakdown)) {
+      const fixId = getFixtureId(key);
+      if (fixId) {
+        if (!fixtureMap.has(fixId)) {
+          const fix = fixtures?.find(f => String(f.api_id) === fixId);
+          fixtureMap.set(fixId, { fix, entries: [] });
+        }
+        fixtureMap.get(fixId).entries.push({ key, val, label: formatEntry(key, val) });
+      } else {
+        other.push({ key, val, label: formatEntry(key, val) });
+      }
     }
-    // hattrick_282643_760417
-    if (/^hattrick_(\d+)_/.test(key)) {
-      const [, pid] = key.match(/^hattrick_(\d+)_/);
-      return { label: `🎩 Hat Trick — ${playerName(pid)}`, icon: '🎩' };
-    }
-    // dbl_assist_282643_760417
-    if (/^dbl_assist_(\d+)_/.test(key)) {
-      const [, pid] = key.match(/^dbl_assist_(\d+)_/);
-      return { label: `🔑 Double Assist — ${playerName(pid)}`, icon: '🔑' };
-    }
-    // cs_141438_fix760421
-    if (/^cs_(\d+)_/.test(key)) {
-      const [, pid] = key.match(/^cs_(\d+)_/);
-      return { label: `🧤 Clean Sheet — ${playerName(pid)}`, icon: '🧤' };
-    }
-    // upset_760417
-    if (/^upset_/.test(key)) return { label: '💥 Upset Bonus', icon: '💥' };
-    // group_finish_123_r1
-    if (/^group_finish_(\d+)_r(\d+)$/.test(key)) {
-      const [, tid, rank] = key.match(/^group_finish_(\d+)_r(\d+)$/);
-      return { label: rank === '1' ? `🏆 Won Group — ${teamName(tid)}` : `✅ Qualified — ${teamName(tid)}`, icon: rank === '1' ? '🏆' : '✅' };
-    }
-    // player_282643_goal_fix760417
-    if (/^player_(\d+)_(goal|assist|yellow_card|red_card|own_goal|penalty_save)_/.test(key)) {
-      const [, pid, type] = key.match(/^player_(\d+)_(goal|assist|yellow_card|red_card|own_goal|penalty_save)_/);
-      const typeLabels = { goal: '⚽ Goal', assist: '🎯 Assist', yellow_card: '🟨 Yellow Card', red_card: '🟥 Red Card', own_goal: '😬 Own Goal', penalty_save: '🧤 Penalty Save' };
-      return { label: `${typeLabels[type] || type} — ${playerName(pid)}`, icon: '' };
-    }
-    return { label: key.replace(/_/g, ' '), icon: '' };
+    return { byFixture: [...fixtureMap.entries()], other };
   }
 
   function handleOverride(e) {
@@ -237,27 +240,58 @@ export default function LeaderboardRow({
             </div>
           )}
 
-          {/* Score breakdown */}
-          {Object.keys(breakdown).length > 0 && (
-            <div>
-              <div className="text-muted text-xs" style={{ marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Points Breakdown
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {Object.entries(breakdown).map(([key, val]) => {
-                  const { label } = formatBreakdownKey(key, val);
-                  return (
-                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', gap: 8 }}>
-                      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                      <span style={{ fontWeight: 700, color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
-                        {val >= 0 ? '+' : ''}{val}
-                      </span>
+          {/* Score breakdown grouped by fixture */}
+          {Object.keys(breakdown).length > 0 && (() => {
+            const { byFixture, other } = groupedBreakdown();
+            return (
+              <div>
+                <div className="text-muted text-xs" style={{ marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Points Breakdown
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {byFixture.map(([fixId, { fix, entries }]) => {
+                    const homeTeam = fix ? teamByApiId(fix.home_team_api_id) : null;
+                    const awayTeam = fix ? teamByApiId(fix.away_team_api_id) : null;
+                    const fixTotal = entries.reduce((s, e) => s + e.val, 0);
+                    const header = homeTeam && awayTeam
+                      ? `${homeTeam.name} ${fix.home_goals}–${fix.away_goals} ${awayTeam.name}`
+                      : `Match #${fixId}`;
+                    return (
+                      <div key={fixId} style={{ borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)' }}>{header}</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: fixTotal >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                            {fixTotal >= 0 ? '+' : ''}{fixTotal}
+                          </span>
+                        </div>
+                        {entries.map(({ key, val, label }) => (
+                          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', gap: 8 }}>
+                            <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                            <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
+                              {val >= 0 ? '+' : ''}{val}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  {other.length > 0 && (
+                    <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Tournament Bonuses</div>
+                      {other.map(({ key, val, label }) => (
+                        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', gap: 8 }}>
+                          <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                          <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
+                            {val >= 0 ? '+' : ''}{val}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Host override */}
           {isHost && onOverride && (
