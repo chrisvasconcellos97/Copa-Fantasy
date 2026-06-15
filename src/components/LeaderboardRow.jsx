@@ -20,9 +20,12 @@ export default function LeaderboardRow({
   onToggle,
   isHost,
   onOverride,
+  onRename,
 }) {
   const [overrideValue, setOverrideValue] = useState('');
   const [overrideDesc, setOverrideDesc] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(player.player_name);
 
   const rankColor = RANK_COLORS[rank] || 'var(--text-muted)';
   const totalPoints = score?.total_points ?? 0;
@@ -139,12 +142,43 @@ export default function LeaderboardRow({
         </span>
 
         {/* Name */}
-        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.95rem' }}>
-          {player.player_name}
-          {player.is_host && (
-            <span className="badge badge-gold" style={{ marginLeft: 8, fontSize: '0.65rem' }}>
-              HOST
-            </span>
+        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {editingName ? (
+            <>
+              <input
+                autoFocus
+                className="input"
+                value={nameValue}
+                onChange={e => setNameValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.stopPropagation(); onRename(player.id, nameValue); setEditingName(false); }
+                  if (e.key === 'Escape') { setEditingName(false); setNameValue(player.player_name); }
+                }}
+                onClick={e => e.stopPropagation()}
+                style={{ width: 140, padding: '2px 8px', fontSize: '0.88rem' }}
+              />
+              <button
+                onClick={e => { e.stopPropagation(); onRename(player.id, nameValue); setEditingName(false); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--success)', fontSize: '1rem', padding: 0 }}
+              >✓</button>
+              <button
+                onClick={e => { e.stopPropagation(); setEditingName(false); setNameValue(player.player_name); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '1rem', padding: 0 }}
+              >✕</button>
+            </>
+          ) : (
+            <>
+              {player.player_name}
+              {player.is_host && (
+                <span className="badge badge-gold" style={{ marginLeft: 4, fontSize: '0.65rem' }}>HOST</span>
+              )}
+              {isHost && onRename && (
+                <button
+                  onClick={e => { e.stopPropagation(); setEditingName(true); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', padding: '0 2px', lineHeight: 1 }}
+                >✏️</button>
+              )}
+            </>
           )}
         </span>
 

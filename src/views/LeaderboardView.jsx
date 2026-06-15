@@ -398,6 +398,11 @@ export default function LeaderboardView() {
     }
   }
 
+  async function handleRename(gpId, newName) {
+    if (!newName?.trim()) return;
+    await supabase.from('game_players').update({ player_name: newName.trim() }).eq('id', gpId);
+  }
+
   async function handleOverride(gpId, newTotal) {
     setHostLoading(true);
     try {
@@ -548,6 +553,7 @@ export default function LeaderboardView() {
               isExpanded={expandedRow === player.id}
               onToggle={() => setExpandedRow(expandedRow === player.id ? null : player.id)}
               isHost={isHost}
+              onRename={isHost ? handleRename : null}
               onOverride={isHost ? handleOverride : null}
             />
           ))}
