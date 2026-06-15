@@ -18,11 +18,24 @@ export default function HomeView() {
   const navigate = useNavigate();
   const [tab, setTab] = useState('create');
 
-  // Auto-restore session from ?pt=<playerToken> deep link
+  // Auto-restore session from ?pt=<playerToken> deep link, or existing localStorage session
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pt = params.get('pt');
-    if (!pt) return;
+
+    // No deep link — check if we already have a valid session saved
+    if (!pt) {
+      const existing = JSON.parse(localStorage.getItem('copa_fantasy_session') || 'null');
+      if (existing?.gameId && existing?.playerId) {
+        supabase.from('games').select('status').eq('id', existing.gameId).single().then(({ data: game }) => {
+          if (!game) return;
+          if (game.status === 'lobby') navigate(`/lobby/${existing.gameId}`);
+          else if (['drafting_teams', 'selecting_players', 'selecting_captain'].includes(game.status)) navigate(`/draft/${existing.gameId}`);
+          else navigate(`/leaderboard/${existing.gameId}`);
+        });
+      }
+      return;
+    }
     (async () => {
       const { data: gp } = await supabase
         .from('game_players')
