@@ -495,7 +495,7 @@ export default function LeaderboardView() {
     <div className="page">
       {/* 1. Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Leaderboard</h1>
+        <h1 className="page-title" style={{ margin: 0 }}>Hub</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           {isHost && linkedGameId && (
             <button
@@ -518,7 +518,85 @@ export default function LeaderboardView() {
         </div>
       </div>
 
-      {/* 2. Mascot Assistant */}
+      {/* 2. Live match cards for MY teams */}
+      {liveFixtures.filter(f =>
+        myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
+      ).map(fix => {
+        const homeTeam = teams.find(t => String(t.api_id) === String(fix.home_team_api_id));
+        const awayTeam = teams.find(t => String(t.api_id) === String(fix.away_team_api_id));
+        const myTeamIsHome = myTeamIds.includes(String(fix.home_team_api_id));
+        const myTeamObj = myTeamIsHome ? homeTeam : awayTeam;
+
+        // My players in this fixture's team
+        const myDraftPickForTeam = myDraftPicks.find(dp => String(dp.team_api_id) === String(myTeamIsHome ? fix.home_team_api_id : fix.away_team_api_id));
+        const activePlayers = myDraftPickForTeam ? getActivePlayers(myDraftPickForTeam.id, myDraftPickForTeam.team_api_id) : [];
+
+        return (
+          <div key={fix.api_id} className="card" style={{ marginBottom: 12, padding: '12px 14px', border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.05)' }}>
+            {/* Live badge + elapsed */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger)', background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: 100, animation: 'pulse 1.5s ease-in-out infinite' }}>
+                🔴 LIVE
+              </span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fix.elapsed}'</span>
+            </div>
+
+            {/* Score line */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
+              <div style={{ textAlign: 'right', flex: 1 }}>
+                {homeTeam?.logo_url && <img src={homeTeam.logo_url} alt="" style={{ width: 20, height: 20, objectFit: 'contain', marginBottom: 2 }} />}
+                <div style={{ fontWeight: myTeamIsHome ? 800 : 500, fontSize: '0.9rem', color: myTeamIsHome ? 'var(--gold)' : 'var(--text)' }}>{homeTeam?.name}</div>
+              </div>
+              <div style={{ fontWeight: 900, fontSize: '1.6rem', letterSpacing: 2, minWidth: 60, textAlign: 'center' }}>
+                {fix.home_goals ?? 0}–{fix.away_goals ?? 0}
+              </div>
+              <div style={{ textAlign: 'left', flex: 1 }}>
+                {awayTeam?.logo_url && <img src={awayTeam.logo_url} alt="" style={{ width: 20, height: 20, objectFit: 'contain', marginBottom: 2 }} />}
+                <div style={{ fontWeight: !myTeamIsHome ? 800 : 500, fontSize: '0.9rem', color: !myTeamIsHome ? 'var(--gold)' : 'var(--text)' }}>{awayTeam?.name}</div>
+              </div>
+            </div>
+
+            {/* My players in this match */}
+            {activePlayers.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                  Your players — {myTeamObj?.name}
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {activePlayers.map(p => {
+                    const pos = resolvePlayerPos(p.player_api_id, myDraftPickForTeam.team_api_id);
+                    const posColor = POS_COLOR[pos] || 'var(--border)';
+                    const pName = resolvePlayerName(p.player_api_id, myDraftPickForTeam.team_api_id);
+                    const pObj = resolvePlayerObj(p.player_api_id);
+                    const pPts = playerPointsFromBreakdown(myScore?.breakdown, p.player_api_id);
+                    // Live events for this player
+                    const goals = liveEvents.filter(e => String(e.player_api_id) === String(p.player_api_id) && String(e.fixture_api_id) === String(fix.api_id) && e.type === 'goal').length;
+                    const assists = liveEvents.filter(e => String(e.player_api_id) === String(p.player_api_id) && String(e.fixture_api_id) === String(fix.api_id) && e.type === 'assist').length;
+                    return (
+                      <div key={p.player_api_id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, width: 68 }}>
+                        <div style={{ width: 48, height: 48, borderRadius: '50%', border: `2px solid ${posColor}`, overflow: 'hidden', background: 'var(--dark-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {pObj?.photo_url ? (
+                            <img src={pObj.photo_url?.includes('cdn.sofifa.net') ? `https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1/img-proxy?url=${encodeURIComponent(pObj.photo_url)}` : pObj.photo_url} alt={pObj.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+                          ) : <span style={{ fontSize: '1rem', color: posColor }}>👤</span>}
+                        </div>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 600, textAlign: 'center', maxWidth: 68, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pName}</span>
+                        <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 4px', borderRadius: 100, background: `${posColor}22`, color: posColor }}>{pos}</span>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                          {goals > 0 && <span style={{ fontSize: '0.65rem' }}>⚽×{goals}</span>}
+                          {assists > 0 && <span style={{ fontSize: '0.65rem' }}>🎯×{assists}</span>}
+                          {pPts !== 0 && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: pPts > 0 ? 'var(--success)' : 'var(--danger)' }}>{pPts > 0 ? '+' : ''}{pPts}pts</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* 3. Mascot Assistant */}
       {myId && (
         <MascotHint
           message={mascotMessage}
@@ -528,7 +606,7 @@ export default function LeaderboardView() {
         />
       )}
 
-      {/* 3. Leaderboard rankings */}
+      {/* 4. Leaderboard rankings */}
       {scoresLoading ? (
         <div className="loading"><div className="spinner" /></div>
       ) : leaderboardEntries.length === 0 ? (
