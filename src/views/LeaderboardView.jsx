@@ -26,6 +26,12 @@ function playerPointsFromBreakdown(breakdown, playerId) {
 
 // ─── Mascot helpers ────────────────────────────────────────────────
 
+// Seeded pick so message stays stable within the same hour but rotates daily
+function pick(arr, seed = 0) {
+  return arr[Math.abs(seed) % arr.length];
+}
+function hourSeed() { return Math.floor(Date.now() / 3600000); }
+
 function parseBreakdownKey(key, val) {
   let m = key.match(/^fix_(\d+)$/);
   if (m) return { fixtureId: m[1], type: 'result', playerId: null, pts: val };
@@ -141,9 +147,80 @@ function formatKickoff(dateStr) {
   return `${day} at ${time} ET`;
 }
 
+// Detect rank changes vs last saved snapshot, return notable commentary lines
+const RANKS_KEY = 'copa_ranks_snapshot';
+function computeRankChanges(leaderboardEntries, gameId) {
+  const currentRanks = {};
+  leaderboardEntries.forEach((e, i) => { currentRanks[e.player.id] = { rank: i + 1, name: e.player.player_name.split(' ')[0], pts: e.score?.total_points || 0 }; });
+
+  const raw = localStorage.getItem(RANKS_KEY);
+  let prev = {};
+  try { const parsed = JSON.parse(raw || '{}'); prev = parsed[gameId] || {}; } catch {}
+
+  const changes = [];
+  const seed = hourSeed();
+
+  for (const [id, cur] of Object.entries(currentRanks)) {
+    const old = prev[id];
+    if (!old || old.pts === cur.pts) continue;
+    const moved = old.rank - cur.rank; // positive = moved up
+    const name = cur.name;
+
+    if (cur.rank === 1 && old.rank !== 1) {
+      changes.push(pick([
+        `${name} just took the lead. Nobody asked but there it is.`,
+        `${name} is now #1. The throne has a new occupant and they look comfortable.`,
+        `${name} snatched first place. The audacity.`,
+        `${name} moved to the top. Enjoy it while it lasts — this tournament has opinions.`,
+      ], seed + id.charCodeAt(0)));
+    } else if (old.rank === 1 && cur.rank !== 1) {
+      changes.push(pick([
+        `${name} lost the lead. What a time to become human.`,
+        `${name} is no longer #1. Gravity, it turns out, applies to fantasy standings too.`,
+        `${name} dropped from first. The fall from grace is always faster than the climb.`,
+        `${name} gave up the top spot. Voluntarily? No. But here we are.`,
+      ], seed + id.charCodeAt(0) + 1));
+    } else if (moved >= 3) {
+      changes.push(pick([
+        `${name} jumped ${moved} spots. Someone's teams showed up today.`,
+        `${name} is on the move — up ${moved} places. Don't make eye contact.`,
+        `${name} climbed ${moved} positions like they had something to prove. They did.`,
+        `${name} rocketed up ${moved} spots. Quietly devastating for everyone above them yesterday.`,
+      ], seed + id.charCodeAt(0) + 2));
+    } else if (moved > 0) {
+      changes.push(pick([
+        `${name} is up to #${cur.rank}. Creeping.`,
+        `${name} moved up ${moved}. Slow and steady wins nothing in fantasy but it's progress.`,
+        `${name} climbed to #${cur.rank}. The grind continues.`,
+      ], seed + id.charCodeAt(0) + 3));
+    } else if (moved <= -3) {
+      changes.push(pick([
+        `${name} dropped ${Math.abs(moved)} spots. Their teams were unavailable for comment.`,
+        `${name} fell ${Math.abs(moved)} places. That's not a slide, that's a cliff.`,
+        `${name} slipped ${Math.abs(moved)} positions. It's fine. Probably fine.`,
+      ], seed + id.charCodeAt(0) + 4));
+    } else if (moved < 0) {
+      changes.push(pick([
+        `${name} dropped to #${cur.rank}. Temporary. Hopefully.`,
+        `${name} slipped ${Math.abs(moved)}. It happens.`,
+      ], seed + id.charCodeAt(0) + 5));
+    }
+  }
+
+  // Save snapshot
+  try {
+    const all = JSON.parse(raw || '{}');
+    all[gameId] = currentRanks;
+    localStorage.setItem(RANKS_KEY, JSON.stringify(all));
+  } catch {}
+
+  return changes.slice(0, 3); // max 3 updates at a time
+}
+
 function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtures, upcomingFixtures, fixtures, breakdown, allPlayers, leaderName, leaderGap, playerName }) {
   const name = playerName ? playerName.split(' ')[0] : null;
   const msgs = [];
+  const seed = hourSeed() + (myRank || 0);
 
   const live = getMyLiveContext(liveFixtures, myTeamIds, teams);
   const recent = getMyRecentPoints(breakdown, fixtures, teams, allPlayers);
@@ -151,46 +228,117 @@ function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtur
     myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
   );
 
-  // 1. Live first — most urgent
+  // 1. Live first
   if (live) {
     const { myTeam, opp, myGoals, oppGoals, elapsed } = live;
     if (myGoals > oppGoals) {
-      msgs.push(`🔴 ${myTeam?.name} up ${myGoals}–${oppGoals} on ${opp?.name} (${elapsed}'). Don't get comfortable — football has a cruel sense of timing.`);
+      msgs.push(pick([
+        `🔴 ${myTeam?.name} up ${myGoals}–${oppGoals} on ${opp?.name} (${elapsed}'). Don't get comfortable — football has a cruel sense of timing.`,
+        `🔴 ${myTeam?.name} winning ${myGoals}–${oppGoals} (${elapsed}'). Go ahead and celebrate early. What could go wrong.`,
+        `🔴 ${myTeam?.name} leading ${myGoals}–${oppGoals} vs ${opp?.name}. ${elapsed} minutes in. Breathe. Maybe.`,
+        `🔴 ${myGoals}–${oppGoals}, ${myTeam?.name} in front (${elapsed}'). The scoreboard is lying for your benefit right now.`,
+      ], seed));
     } else if (myGoals < oppGoals) {
-      msgs.push(`🔴 ${myTeam?.name} down ${myGoals}–${oppGoals} to ${opp?.name} (${elapsed}'). There's still time. Not much, but technically some.`);
+      msgs.push(pick([
+        `🔴 ${myTeam?.name} down ${myGoals}–${oppGoals} to ${opp?.name} (${elapsed}'). There's still time. Not much, but technically some.`,
+        `🔴 ${opp?.name} up ${oppGoals}–${myGoals} on your ${myTeam?.name} (${elapsed}'). On the bright side, you're building character.`,
+        `🔴 ${myTeam?.name} trailing ${myGoals}–${oppGoals} (${elapsed}'). The comeback narrative is still technically available.`,
+        `🔴 ${myTeam?.name} losing ${myGoals}–${oppGoals}. ${elapsed} minutes gone. Hope is not a strategy but it's all we've got.`,
+      ], seed));
     } else {
-      msgs.push(`🔴 ${myTeam?.name} ${myGoals}–${oppGoals} ${opp?.name} live (${elapsed}'). All to play for, as the cliché goes.`);
+      msgs.push(pick([
+        `🔴 ${myTeam?.name} ${myGoals}–${oppGoals} ${opp?.name} live (${elapsed}'). All to play for, as the cliché goes.`,
+        `🔴 Level at ${myGoals}–${oppGoals}, ${myTeam?.name} vs ${opp?.name} (${elapsed}'). The drama is being saved for later, apparently.`,
+        `🔴 ${myGoals} apiece. ${myTeam?.name} and ${opp?.name} are keeping everyone honest (${elapsed}').`,
+        `🔴 Deadlocked ${myGoals}–${oppGoals} (${elapsed}'). Someone needs to do something. Soon.`,
+      ], seed));
     }
   }
-  // 2. Recent points — what you just banked
+  // 2. Recent points
   else if (recent.totalPts > 0 && recent.summaries.length) {
     const detail = recent.summaries.map(s => `${s.text} (+${s.pts}pts)`).join('. ');
-    msgs.push(`You banked +${recent.totalPts}pts from the recent round${name ? `, ${name}` : ''}. ${detail}.`);
+    msgs.push(pick([
+      `You banked +${recent.totalPts}pts from the recent round${name ? `, ${name}` : ''}. ${detail}.`,
+      `+${recent.totalPts}pts added to your total${name ? `, ${name}` : ''}. ${detail}.`,
+      `The scoreboard moved in your favor — +${recent.totalPts}pts. ${detail}.`,
+      `${recent.totalPts} more points for the cause${name ? `, ${name}` : ''}. ${detail}.`,
+    ], seed));
   }
-  // 3. Nothing yet — tease next fixture
+  // 3. Next fixture
   else if (next) {
     const home = teams.find(t => String(t.api_id) === String(next.home_team_api_id));
     const away = teams.find(t => String(t.api_id) === String(next.away_team_api_id));
     const myTeamIsHome = myTeamIds.includes(String(next.home_team_api_id));
     const myTeam = myTeamIsHome ? home : away;
     const opp = myTeamIsHome ? away : home;
-    msgs.push(`${myTeam?.name} face ${opp?.name} ${formatKickoff(next.date)} — your fate partly in their hands. Bold of you to trust them.`);
+    msgs.push(pick([
+      `${myTeam?.name} face ${opp?.name} ${formatKickoff(next.date)} — your fate partly in their hands. Bold of you to trust them.`,
+      `${myTeam?.name} vs ${opp?.name} ${formatKickoff(next.date)}. Pending results. As always.`,
+      `Up next: ${myTeam?.name} against ${opp?.name} ${formatKickoff(next.date)}. You're not nervous. You're definitely not nervous.`,
+      `${myTeam?.name} play ${formatKickoff(next.date)} vs ${opp?.name}. Light a candle or whatever you do.`,
+    ], seed));
   }
 
-  // 4. Ranking jab (always appended if space)
+  // 4. Ranking
   if (myRank && totalPlayers) {
     if (myRank === 1) {
-      msgs.push(`You're #1 of ${totalPlayers}. The others have been informed and are devastated.`);
+      msgs.push(pick([
+        `You're #1 of ${totalPlayers}. The others have been informed and are devastated.`,
+        `First place. ${totalPlayers - 1} people are quietly rooting against you.`,
+        `#1 of ${totalPlayers}. Enjoy the view — everyone else is plotting.`,
+        `Top of the table${name ? `, ${name}` : ''}. Try not to make it weird.`,
+        `You're leading. Nobody's happy about it except you.`,
+      ], seed + 1));
     } else if (leaderName && leaderGap > 0) {
-      msgs.push(`You're #${myRank} of ${totalPlayers} — ${leaderGap}pts behind ${leaderName.split(' ')[0]}. You need a miracle, or at least a few well-placed red cards.`);
+      msgs.push(pick([
+        `You're #${myRank} of ${totalPlayers} — ${leaderGap}pts behind ${leaderName.split(' ')[0]}. You need a miracle, or at least a few well-placed red cards.`,
+        `#${myRank}. ${leaderGap}pts back from ${leaderName.split(' ')[0]}. The gap is real but so is football's chaos.`,
+        `${leaderGap} points off the lead. ${leaderName.split(' ')[0]} is not thinking about you. Maybe start thinking about that.`,
+        `Sitting #${myRank}. ${leaderName.split(' ')[0]} is ${leaderGap}pts ahead and looking comfortable. Rude.`,
+        `#${myRank} of ${totalPlayers}. ${leaderGap}pts behind ${leaderName.split(' ')[0]}. Close enough to hope, far enough to hurt.`,
+      ], seed + 1));
     } else if (myRank === totalPlayers) {
-      msgs.push(`Dead last of ${totalPlayers}${name ? `, ${name}` : ''}. Someone has to be — you've embraced the role.`);
+      msgs.push(pick([
+        `Dead last of ${totalPlayers}${name ? `, ${name}` : ''}. Someone has to be — you've embraced the role.`,
+        `#${totalPlayers} of ${totalPlayers}. Last place is a position too. Not a good one, but still.`,
+        `Bottom of the table${name ? `, ${name}` : ''}. There's only one direction from here. Hopefully.`,
+        `${totalPlayers}th place. Your teams are doing their best. Their best is just not very good.`,
+        `Last place${name ? `, ${name}` : ''}. The standings are just a suggestion anyway.`,
+      ], seed + 1));
+    } else if (myRank === 2) {
+      msgs.push(pick([
+        `Silver medal position. The participation trophy for people who almost won.`,
+        `#2 of ${totalPlayers}. One spot away from the thing that matters. Classic.`,
+        `Second place${name ? `, ${name}` : ''}. Close enough to smell first, far enough to feel it.`,
+        `P2. The most frustrating place to finish in any competition ever invented.`,
+      ], seed + 1));
+    } else if (myRank === 3) {
+      msgs.push(pick([
+        `Third. Podium, technically. Nobody remembers 3rd but it counts.`,
+        `Bronze position${name ? `, ${name}` : ''}. Two more moves and you're dangerous.`,
+        `#3 of ${totalPlayers}. In striking distance. Allegedly.`,
+        `P3. One bad game week for the two ahead of you and you're right there.`,
+      ], seed + 1));
     } else {
-      msgs.push(`#${myRank} of ${totalPlayers}. Mid-table mediocrity, lovingly maintained.`);
+      msgs.push(pick([
+        `#${myRank} of ${totalPlayers}. Mid-table mediocrity, lovingly maintained.`,
+        `${myRank}th of ${totalPlayers}. Solidly average. There are worse things.`,
+        `P${myRank}. Not first, not last. A masterclass in existing.`,
+        `#${myRank} of ${totalPlayers}. Comfortable. Maybe too comfortable.`,
+      ], seed + 1));
     }
   }
 
-  return msgs.join(' ') || `Nothing to report${name ? `, ${name}` : ''}. Your teams are presumably doing warmups somewhere, unbothered by your anxiety.`;
+  return msgs.join(' ') || pick([
+    `Nothing to report${name ? `, ${name}` : ''}. Your teams are presumably doing warmups somewhere, unbothered by your anxiety.`,
+    `Quiet on all fronts${name ? `, ${name}` : ''}. This is either good or the calm before something bad.`,
+    `No news${name ? `, ${name}` : ''}. Your teams are out there. Somewhere. Doing things.`,
+  ], seed);
+}
+
+// Build standings update lines for the mascot card
+function buildStandingsUpdate(leaderboardEntries, gameId) {
+  return computeRankChanges(leaderboardEntries, gameId);
 }
 
 export default function LeaderboardView() {
@@ -482,6 +630,11 @@ export default function LeaderboardView() {
     });
   }, [myRank, totalPlayers, myTeamIds, teams, liveFixtures, upcomingFixtures, fixtures, myScore, allPlayers, leaderboardEntries, players, myId]);
 
+  const standingsUpdates = useMemo(() =>
+    leaderboardEntries.length > 0 ? buildStandingsUpdate(leaderboardEntries, gameId) : [],
+    [leaderboardEntries, gameId]
+  );
+
   function getActivePlayers(draftPickId, teamApiId) {
     const base = myPlayerPicks.filter(p => p.draft_pick_id === draftPickId);
     const sub = mySubstitutions.find(s => s.draft_pick_id === draftPickId);
@@ -652,7 +805,21 @@ export default function LeaderboardView() {
         />
       )}
 
-      {/* 4. Leaderboard rankings */}
+      {/* 4. Standings update card */}
+      {standingsUpdates.length > 0 && (
+        <div className="card mb-16" style={{ background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.2)', padding: '12px 14px' }}>
+          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+            📣 Standings Update
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {standingsUpdates.map((line, i) => (
+              <div key={i} style={{ fontSize: '0.85rem', color: 'var(--text)', lineHeight: 1.5 }}>{line}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Leaderboard rankings */}
       {scoresLoading ? (
         <div className="loading"><div className="spinner" /></div>
       ) : leaderboardEntries.length === 0 ? (
