@@ -233,18 +233,18 @@ export default function LeaderboardView() {
   }
 
   function resolvePlayerName(apiId, teamApiId) {
-    const dbPlayer = allPlayers.find(p => p.api_id === apiId);
+    const dbPlayer = allPlayers.find(p => String(p.api_id) === String(apiId));
     if (dbPlayer) return dbPlayer.name;
     const squad = squadPlayers[teamApiId] || [];
-    const local = squad.find(p => p.api_id === apiId);
-    return local?.name || apiId;
+    const local = squad.find(p => String(p.api_id) === String(apiId));
+    return local?.name || `#${apiId}`;
   }
 
   function resolvePlayerPos(apiId, teamApiId) {
-    const dbPlayer = allPlayers.find(p => p.api_id === apiId);
+    const dbPlayer = allPlayers.find(p => String(p.api_id) === String(apiId));
     if (dbPlayer) return normalizePosition(dbPlayer.position);
     const squad = squadPlayers[teamApiId] || [];
-    const local = squad.find(p => p.api_id === apiId);
+    const local = squad.find(p => String(p.api_id) === String(apiId));
     return local ? normalizePosition(local.position) : '?';
   }
 
