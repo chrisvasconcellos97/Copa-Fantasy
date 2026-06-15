@@ -49,36 +49,24 @@ export default function LeaderboardView() {
   useEffect(() => {
     async function loadData() {
       const myId = session?.playerId;
-      const [{ data: teamsData }, { data: playersData }, { data: ppData }, { data: cpData }, { data: subsData }, { data: myPpData }] = await Promise.all([
+      const [{ data: teamsData }, { data: ppData }, { data: cpData }, { data: subsData }, { data: myPpData }] = await Promise.all([
         supabase.from('teams').select('*'),
-        supabase.from('players').select('*'),
         supabase.from('player_picks').select('*').eq('game_id', gameId),
         supabase.from('captain_picks').select('*').eq('game_id', gameId),
         supabase.from('substitutions').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
         supabase.from('player_picks').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
       ]);
       setTeams(teamsData || []);
-      setAllPlayers(playersData || []);
       setPlayerPicksAll(ppData || []);
       setCaptainPicksAll(cpData || []);
       setMySubstitutions(subsData || []);
       setMyPlayerPicks(myPpData || []);
 
-      // Build squad player lookup from DB or fallback for my teams
-      if (teamsData && myPpData) {
-        const myPickTeamIds = [...new Set((ppData || []).filter(p => p.game_player_id === myId).map(p => p.team_api_id))];
-        const lookup = {};
-        for (const tid of myPickTeamIds) {
-          const { data: tPlayers } = await supabase.from('players').select('*').eq('team_api_id', String(tid));
-          if (tPlayers && tPlayers.length > 0) {
-            lookup[tid] = tPlayers;
-          } else {
-            const team = (teamsData || []).find(t => String(t.api_id) === String(tid));
-            const raw = team ? getSquadForTeam(team.name) : null;
-            lookup[tid] = raw ? raw.map(p => ({ api_id: p.id, name: p.name, position: p.position, isTop: p.isTop })) : [];
-          }
-        }
-        setSquadPlayers(lookup);
+      // Only fetch players that are actually picked in this game
+      const pickedIds = [...new Set((ppData || []).map(p => p.player_api_id).filter(Boolean))];
+      if (pickedIds.length > 0) {
+        const { data: playersData } = await supabase.from('players').select('*').in('api_id', pickedIds);
+        setAllPlayers(playersData || []);
       }
     }
     loadData();

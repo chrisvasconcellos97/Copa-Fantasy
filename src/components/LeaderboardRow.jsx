@@ -34,11 +34,62 @@ export default function LeaderboardRow({
 
   // Get captain player
   const captainPlayer = captainPickId
-    ? players?.find((p) => p.api_id === captainPickId)
+    ? players?.find((p) => String(p.api_id) === String(captainPickId))
     : null;
 
   // Breakdown from score
   const breakdown = score?.breakdown || {};
+
+  function formatBreakdownKey(key, val) {
+    const playerName = (id) => players?.find(p => String(p.api_id) === String(id))?.name || `Player #${id}`;
+    const teamName = (id) => teams?.find(t => String(t.api_id) === String(id))?.name || `Team #${id}`;
+
+    if (key === 'override') return { label: '✏️ Manual adjustment', icon: '✏️' };
+
+    // fix_760417 → match win/draw
+    if (/^fix_\d+$/.test(key)) {
+      return { label: val === 3 ? '⚽ Match Win' : '🤝 Match Draw', icon: val === 3 ? '⚽' : '🤝' };
+    }
+    // golden_boot_282643
+    if (/^golden_boot_(\d+)$/.test(key)) {
+      const [, pid] = key.match(/^golden_boot_(\d+)$/);
+      return { label: `🥾 Golden Boot — ${playerName(pid)}`, icon: '🥾' };
+    }
+    // brace_282643_760417
+    if (/^brace_(\d+)_/.test(key)) {
+      const [, pid] = key.match(/^brace_(\d+)_/);
+      return { label: `⚡ Brace — ${playerName(pid)}`, icon: '⚡' };
+    }
+    // hattrick_282643_760417
+    if (/^hattrick_(\d+)_/.test(key)) {
+      const [, pid] = key.match(/^hattrick_(\d+)_/);
+      return { label: `🎩 Hat Trick — ${playerName(pid)}`, icon: '🎩' };
+    }
+    // dbl_assist_282643_760417
+    if (/^dbl_assist_(\d+)_/.test(key)) {
+      const [, pid] = key.match(/^dbl_assist_(\d+)_/);
+      return { label: `🔑 Double Assist — ${playerName(pid)}`, icon: '🔑' };
+    }
+    // cs_141438_fix760421
+    if (/^cs_(\d+)_/.test(key)) {
+      const [, pid] = key.match(/^cs_(\d+)_/);
+      return { label: `🧤 Clean Sheet — ${playerName(pid)}`, icon: '🧤' };
+    }
+    // upset_760417
+    if (/^upset_/.test(key)) return { label: '💥 Upset Bonus', icon: '💥' };
+    // group_finish_123_r1
+    if (/^group_finish_(\d+)_r(\d+)$/.test(key)) {
+      const [, tid, rank] = key.match(/^group_finish_(\d+)_r(\d+)$/);
+      return { label: rank === '1' ? `🏆 Won Group — ${teamName(tid)}` : `✅ Qualified — ${teamName(tid)}`, icon: rank === '1' ? '🏆' : '✅' };
+    }
+    // player_282643_goal_fix760417
+    if (/^player_(\d+)_(goal|assist|yellow_card|red_card|own_goal|penalty_save)_/.test(key)) {
+      const [, pid, type] = key.match(/^player_(\d+)_(goal|assist|yellow_card|red_card|own_goal|penalty_save)_/);
+      const typeLabels = { goal: '⚽ Goal', assist: '🎯 Assist', yellow_card: '🟨 Yellow Card', red_card: '🟥 Red Card', own_goal: '😬 Own Goal', penalty_save: '🧤 Penalty Save' };
+      return { label: `${typeLabels[type] || type} — ${playerName(pid)}`, icon: '' };
+    }
+    return { label: key.replace(/_/g, ' '), icon: '' };
+  }
 
   function handleOverride(e) {
     e.stopPropagation();
@@ -193,16 +244,17 @@ export default function LeaderboardRow({
                 Points Breakdown
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {Object.entries(breakdown).map(([key, val]) => (
-                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                    <span style={{ color: 'var(--text-muted)', textTransform: 'capitalize' }}>
-                      {key.replace(/_/g, ' ')}
-                    </span>
-                    <span style={{ fontWeight: 600, color: val >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                      {val >= 0 ? '+' : ''}{val}
-                    </span>
-                  </div>
-                ))}
+                {Object.entries(breakdown).map(([key, val]) => {
+                  const { label } = formatBreakdownKey(key, val);
+                  return (
+                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', gap: 8 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                      <span style={{ fontWeight: 700, color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
+                        {val >= 0 ? '+' : ''}{val}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
