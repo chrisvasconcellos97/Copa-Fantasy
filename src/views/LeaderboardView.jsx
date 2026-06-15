@@ -146,7 +146,7 @@ function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtur
   const msgs = [];
 
   const live = getMyLiveContext(liveFixtures, myTeamIds, teams);
-  const recent = getMyRecentPoints(breakdown, fixtures, allPlayers, allPlayers);
+  const recent = getMyRecentPoints(breakdown, fixtures, teams, allPlayers);
   const next = (upcomingFixtures || []).find(f =>
     myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
   );
