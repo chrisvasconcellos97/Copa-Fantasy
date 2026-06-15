@@ -5,6 +5,7 @@ import LobbyView from './views/LobbyView';
 import DraftView from './views/DraftView';
 import MatchCenterView from './views/MatchCenterView';
 import LeaderboardView from './views/LeaderboardView';
+import CombinedLeaderboardView from './views/CombinedLeaderboardView';
 import StatsView from './views/StatsView';
 import PointsModal from './components/PointsModal';
 import { getSession, clearSession } from './lib/session';
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/draft/:gameId" element={<DraftView />} />
           <Route path="/matches" element={<MatchCenterView />} />
           <Route path="/leaderboard/:gameId" element={<LeaderboardView />} />
+          <Route path="/combined/:gameId" element={<CombinedLeaderboardView />} />
           <Route path="/stats" element={<StatsView />} />
         </Routes>
       </div>

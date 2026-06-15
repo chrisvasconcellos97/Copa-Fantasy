@@ -245,15 +245,26 @@ export default function LeaderboardView() {
     <div className="page">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 className="page-title" style={{ margin: 0 }}>Leaderboard</h1>
-        {isHost && linkedGameId && (
-          <button
-            className="btn btn-sm"
-            style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--info)', border: '1px solid rgba(59,130,246,0.3)' }}
-            onClick={() => navigate(`/leaderboard/${linkedGameId}`)}
-          >
-            👁 Group B →
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {isHost && linkedGameId && (
+            <button
+              className="btn btn-sm"
+              style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--info)', border: '1px solid rgba(59,130,246,0.3)' }}
+              onClick={() => navigate(`/leaderboard/${linkedGameId}`)}
+            >
+              👁 Group B →
+            </button>
+          )}
+          {linkedGameId && (
+            <button
+              className="btn btn-sm"
+              style={{ background: 'rgba(255,215,0,0.1)', color: 'var(--gold)', border: '1px solid rgba(255,215,0,0.3)' }}
+              onClick={() => navigate(`/combined/${gameId}`)}
+            >
+              📊 Combined
+            </button>
+          )}
+        </div>
       </div>
 
       {/* My Squad & Subs — shown to logged-in users */}
