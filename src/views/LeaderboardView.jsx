@@ -23,81 +23,173 @@ function playerPointsFromBreakdown(breakdown, playerId) {
   return pts;
 }
 
-function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtures, lastFtFixture, nextFixture, playerName }) {
-  const msgs = [];
-  const name = playerName ? playerName.split(' ')[0] : null;
+// ─── Mascot helpers ────────────────────────────────────────────────
 
-  // Position
+function parseBreakdownKey(key, val) {
+  let m = key.match(/^fix_(\d+)$/);
+  if (m) return { fixtureId: m[1], type: 'result', playerId: null, pts: val };
+  m = key.match(/^player_(\d+)_goal_(\d+)$/);
+  if (m) return { fixtureId: m[2], type: 'goal', playerId: m[1], pts: val };
+  m = key.match(/^cs_(\d+)_(\d+)$/);
+  if (m) return { fixtureId: m[2], type: 'cleansheet', playerId: m[1], pts: val };
+  m = key.match(/^brace_(\d+)_(\d+)$/);
+  if (m) return { fixtureId: m[2], type: 'brace', playerId: m[1], pts: val };
+  m = key.match(/^hattrick_(\d+)_(\d+)$/);
+  if (m) return { fixtureId: m[2], type: 'hattrick', playerId: m[1], pts: val };
+  m = key.match(/^dbl_assist_(\d+)_(\d+)$/);
+  if (m) return { fixtureId: m[2], type: 'dbl_assist', playerId: m[1], pts: val };
+  m = key.match(/^upset_(\d+)$/);
+  if (m) return { fixtureId: m[1], type: 'upset', playerId: null, pts: val };
+  return null;
+}
+
+function getMyRecentPoints(breakdown, fixtures, teams, allPlayers, maxFixtures = 3) {
+  const teamName = (id) => teams.find(t => String(t.api_id) === String(id))?.name || 'Someone';
+  const lastName = (id) => {
+    const p = allPlayers.find(pl => String(pl.api_id) === String(id));
+    if (!p) return null;
+    const parts = (p.name || '').split(' ');
+    return parts[parts.length - 1] || p.name;
+  };
+
+  const byFixture = {};
+  for (const [key, val] of Object.entries(breakdown || {})) {
+    if (!val) continue;
+    const ev = parseBreakdownKey(key, val);
+    if (!ev || !ev.fixtureId) continue;
+    if (!byFixture[ev.fixtureId]) byFixture[ev.fixtureId] = { events: [], total: 0 };
+    byFixture[ev.fixtureId].events.push(ev);
+    byFixture[ev.fixtureId].total += val;
+  }
+
+  const fixtureOrder = fixtures.map(f => String(f.api_id));
+  const scoredIds = Object.keys(byFixture).sort(
+    (a, b) => fixtureOrder.indexOf(a) - fixtureOrder.indexOf(b)
+  );
+  const recentIds = scoredIds.slice(-maxFixtures);
+
+  const summaries = [];
+  let totalPts = 0;
+  for (const fid of recentIds) {
+    const fix = fixtures.find(f => String(f.api_id) === fid);
+    if (!fix) continue;
+    const grp = byFixture[fid];
+    totalPts += grp.total;
+
+    const home = teamName(fix.home_team_api_id);
+    const away = teamName(fix.away_team_api_id);
+    const score = `${fix.home_goals ?? 0}–${fix.away_goals ?? 0}`;
+
+    const bits = [];
+    if (grp.events.some(e => e.type === 'result' || e.type === 'upset'))
+      bits.push(`${home} ${score} ${away}`);
+
+    const star = grp.events
+      .filter(e => ['hattrick', 'brace', 'goal', 'dbl_assist', 'cleansheet'].includes(e.type))
+      .sort((a, b) => b.pts - a.pts)[0];
+    if (star) {
+      const who = lastName(star.playerId);
+      const verb = who ? {
+        hattrick: `${who} bagged a hat trick`,
+        brace: `${who} grabbed a brace`,
+        goal: `${who} scored`,
+        dbl_assist: `${who} set up two`,
+        cleansheet: `${who} kept it clean`,
+      }[star.type] : null;
+      if (verb) bits.push(verb);
+    }
+
+    if (bits.length) summaries.push({ text: bits.join(' — '), pts: grp.total });
+  }
+
+  return { totalPts, summaries };
+}
+
+function getMyLiveContext(liveFixtures, myTeamIds, teams) {
+  for (const fix of liveFixtures || []) {
+    const homeMine = myTeamIds.includes(String(fix.home_team_api_id));
+    const awayMine = myTeamIds.includes(String(fix.away_team_api_id));
+    if (!homeMine && !awayMine) continue;
+    const myTeam = teams.find(t => String(t.api_id) === String(homeMine ? fix.home_team_api_id : fix.away_team_api_id));
+    const opp = teams.find(t => String(t.api_id) === String(homeMine ? fix.away_team_api_id : fix.home_team_api_id));
+    const myGoals = homeMine ? (fix.home_goals ?? 0) : (fix.away_goals ?? 0);
+    const oppGoals = homeMine ? (fix.away_goals ?? 0) : (fix.home_goals ?? 0);
+    return { myTeam, opp, myGoals, oppGoals, elapsed: fix.elapsed };
+  }
+  return null;
+}
+
+function formatKickoff(dateStr) {
+  if (!dateStr) return 'soon';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return 'soon';
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const sameDay = d.toDateString() === now.toDateString();
+  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+  const time = d.toLocaleTimeString('en-US', {
+    hour: 'numeric', minute: d.getMinutes() ? '2-digit' : undefined,
+    timeZone: 'America/New_York',
+  }).toLowerCase().replace(' ', '');
+  if (sameDay) {
+    const hr = Number(d.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }));
+    return `${hr >= 18 ? 'tonight' : 'today'} at ${time} ET`;
+  }
+  if (isTomorrow) return `tomorrow at ${time} ET`;
+  const day = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/New_York' });
+  return `${day} at ${time} ET`;
+}
+
+function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtures, upcomingFixtures, fixtures, breakdown, allPlayers, leaderName, leaderGap, playerName }) {
+  const name = playerName ? playerName.split(' ')[0] : null;
+  const msgs = [];
+
+  const live = getMyLiveContext(liveFixtures, myTeamIds, teams);
+  const recent = getMyRecentPoints(breakdown, fixtures, allPlayers, allPlayers);
+  const next = (upcomingFixtures || []).find(f =>
+    myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
+  );
+
+  // 1. Live first — most urgent
+  if (live) {
+    const { myTeam, opp, myGoals, oppGoals, elapsed } = live;
+    if (myGoals > oppGoals) {
+      msgs.push(`🔴 ${myTeam?.name} up ${myGoals}–${oppGoals} on ${opp?.name} (${elapsed}'). Don't get comfortable — football has a cruel sense of timing.`);
+    } else if (myGoals < oppGoals) {
+      msgs.push(`🔴 ${myTeam?.name} down ${myGoals}–${oppGoals} to ${opp?.name} (${elapsed}'). There's still time. Not much, but technically some.`);
+    } else {
+      msgs.push(`🔴 ${myTeam?.name} ${myGoals}–${oppGoals} ${opp?.name} live (${elapsed}'). All to play for, as the cliché goes.`);
+    }
+  }
+  // 2. Recent points — what you just banked
+  else if (recent.totalPts > 0 && recent.summaries.length) {
+    const detail = recent.summaries.map(s => `${s.text} (+${s.pts}pts)`).join('. ');
+    msgs.push(`You banked +${recent.totalPts}pts from the recent round${name ? `, ${name}` : ''}. ${detail}.`);
+  }
+  // 3. Nothing yet — tease next fixture
+  else if (next) {
+    const home = teams.find(t => String(t.api_id) === String(next.home_team_api_id));
+    const away = teams.find(t => String(t.api_id) === String(next.away_team_api_id));
+    const myTeamIsHome = myTeamIds.includes(String(next.home_team_api_id));
+    const myTeam = myTeamIsHome ? home : away;
+    const opp = myTeamIsHome ? away : home;
+    msgs.push(`${myTeam?.name} face ${opp?.name} ${formatKickoff(next.date)} — your fate partly in their hands. Bold of you to trust them.`);
+  }
+
+  // 4. Ranking jab (always appended if space)
   if (myRank && totalPlayers) {
     if (myRank === 1) {
-      msgs.push(`You're in first. The others have been informed and are devastated.`);
-    } else if (myRank === 2) {
-      msgs.push(`Silver medal. The participation trophy for people who almost won.`);
-    } else if (myRank === 3) {
-      msgs.push(`Podium, technically. Nobody remembers 3rd but it counts.`);
+      msgs.push(`You're #1 of ${totalPlayers}. The others have been informed and are devastated.`);
+    } else if (leaderName && leaderGap > 0) {
+      msgs.push(`You're #${myRank} of ${totalPlayers} — ${leaderGap}pts behind ${leaderName.split(' ')[0]}. You need a miracle, or at least a few well-placed red cards.`);
     } else if (myRank === totalPlayers) {
-      msgs.push(`Dead last${name ? `, ${name}` : ''}. We've notified your next of kin.`);
+      msgs.push(`Dead last of ${totalPlayers}${name ? `, ${name}` : ''}. Someone has to be — you've embraced the role.`);
     } else {
-      msgs.push(`#${myRank} of ${totalPlayers}. Exactly where you'd be if you'd picked teams with your eyes closed. Which, looking at your squad, maybe you did.`);
+      msgs.push(`#${myRank} of ${totalPlayers}. Mid-table mediocrity, lovingly maintained.`);
     }
   }
 
-  // Live game
-  for (const fix of liveFixtures) {
-    const homeTeam = teams.find(t => String(t.api_id) === String(fix.home_team_api_id));
-    const awayTeam = teams.find(t => String(t.api_id) === String(fix.away_team_api_id));
-    const myTeamIsHome = myTeamIds.includes(String(fix.home_team_api_id));
-    const myTeamIsAway = myTeamIds.includes(String(fix.away_team_api_id));
-    if (!myTeamIsHome && !myTeamIsAway) continue;
-    const myTeam = myTeamIsHome ? homeTeam : awayTeam;
-    const opp = myTeamIsHome ? awayTeam : homeTeam;
-    const myGoals = myTeamIsHome ? (fix.home_goals ?? 0) : (fix.away_goals ?? 0);
-    const oppGoals = myTeamIsHome ? (fix.away_goals ?? 0) : (fix.home_goals ?? 0);
-    if (myGoals > oppGoals) {
-      msgs.push(`🔴 ${myTeam?.name} are winning ${myGoals}–${oppGoals} against ${opp?.name} right now. Go ahead and start celebrating — what could possibly go wrong in the next few minutes.`);
-    } else if (myGoals < oppGoals) {
-      msgs.push(`🔴 ${myTeam?.name} are down ${myGoals}–${oppGoals} to ${opp?.name} at the ${fix.elapsed}th. On the bright side, it builds character. Lots and lots of character.`);
-    } else {
-      msgs.push(`🔴 ${myTeam?.name} vs ${opp?.name} is ${myGoals}–${oppGoals} at the ${fix.elapsed}th. Both teams showed up. That's about all that can be said.`);
-    }
-  }
-
-  // Last result
-  if (lastFtFixture) {
-    const homeTeam = teams.find(t => String(t.api_id) === String(lastFtFixture.home_team_api_id));
-    const awayTeam = teams.find(t => String(t.api_id) === String(lastFtFixture.away_team_api_id));
-    const myTeamIsHome = myTeamIds.includes(String(lastFtFixture.home_team_api_id));
-    const myTeam = myTeamIsHome ? homeTeam : awayTeam;
-    const opp = myTeamIsHome ? awayTeam : homeTeam;
-    const myGoals = myTeamIsHome ? lastFtFixture.home_goals : lastFtFixture.away_goals;
-    const oppGoals = myTeamIsHome ? lastFtFixture.away_goals : lastFtFixture.home_goals;
-    if (myGoals > oppGoals) {
-      msgs.push(`${myTeam?.name} beat ${opp?.name} ${myGoals}–${oppGoals}. Your players were on the pitch for it and everything.`);
-    } else if (myGoals === oppGoals) {
-      msgs.push(`${myTeam?.name} drew ${myGoals}–${oppGoals} with ${opp?.name}. A point. Sure.`);
-    } else {
-      msgs.push(`${myTeam?.name} lost ${myGoals}–${oppGoals} to ${opp?.name}. Your picks were present and accounted for. Unfortunately.`);
-    }
-  }
-
-  // Next game
-  if (nextFixture) {
-    const homeTeam = teams.find(t => String(t.api_id) === String(nextFixture.home_team_api_id));
-    const awayTeam = teams.find(t => String(t.api_id) === String(nextFixture.away_team_api_id));
-    const myTeamIsHome = myTeamIds.includes(String(nextFixture.home_team_api_id));
-    const myTeam = myTeamIsHome ? homeTeam : awayTeam;
-    const opp = myTeamIsHome ? awayTeam : homeTeam;
-    const dateStr = nextFixture.date
-      ? new Date(nextFixture.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-      : 'soon';
-    msgs.push(`${myTeam?.name} face ${opp?.name} on ${dateStr}. You're not nervous. You're definitely not nervous.`);
-  }
-
-  if (msgs.length === 0) {
-    return `Nothing to report. Your teams are presumably doing warmups somewhere, unbothered by your anxiety.`;
-  }
-
-  return msgs.join(' ');
+  return msgs.join(' ') || `Nothing to report${name ? `, ${name}` : ''}. Your teams are presumably doing warmups somewhere, unbothered by your anxiety.`;
 }
 
 export default function LeaderboardView() {
@@ -344,34 +436,24 @@ export default function LeaderboardView() {
   // My team api ids for mascot
   const myTeamIds = myDraftPicks.map(dp => String(dp.team_api_id));
 
-  // Last FT fixture involving my teams
-  const ftFixtures = fixtures; // already FT
-  const lastFtFixture = useMemo(() => {
-    if (!myTeamIds.length) return null;
-    const relevant = ftFixtures.filter(f =>
-      myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
-    );
-    return relevant.length > 0 ? relevant[relevant.length - 1] : null;
-  }, [ftFixtures, myTeamIds]);
-
-  // Next upcoming fixture involving my teams
-  const nextFixture = useMemo(() => {
-    if (!myTeamIds.length) return null;
-    return upcomingFixtures.find(f =>
-      myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
-    ) || null;
-  }, [upcomingFixtures, myTeamIds]);
-
-  const mascotMessage = useMemo(() => buildMascotMessage({
-    myRank: myRank || null,
-    totalPlayers,
-    myTeamIds,
-    teams,
-    liveFixtures,
-    lastFtFixture,
-    nextFixture,
-    playerName: players.find(p => p.id === myId)?.player_name || '',
-  }), [myRank, totalPlayers, myTeamIds, teams, liveFixtures, lastFtFixture, nextFixture, players, myId]);
+  const mascotMessage = useMemo(() => {
+    const leader = leaderboardEntries[0];
+    const leaderGap = leader && myScore ? Math.max(0, (leader.score?.total_points || 0) - (myScore.total_points || 0)) : 0;
+    return buildMascotMessage({
+      myRank: myRank || null,
+      totalPlayers,
+      myTeamIds,
+      teams,
+      liveFixtures,
+      upcomingFixtures,
+      fixtures,
+      breakdown: myScore?.breakdown || {},
+      allPlayers,
+      leaderName: leader?.player?.player_name || null,
+      leaderGap,
+      playerName: players.find(p => p.id === myId)?.player_name || '',
+    });
+  }, [myRank, totalPlayers, myTeamIds, teams, liveFixtures, upcomingFixtures, fixtures, myScore, allPlayers, leaderboardEntries, players, myId]);
 
   function getActivePlayers(draftPickId, teamApiId) {
     const base = myPlayerPicks.filter(p => p.draft_pick_id === draftPickId);
@@ -433,7 +515,10 @@ export default function LeaderboardView() {
       {/* 2. Mascot Assistant */}
       {myId && (
         <div className="card mb-16" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'rgba(255,215,0,0.04)', border: '1px solid rgba(255,215,0,0.2)' }}>
-          <div style={{ fontSize: '2.2rem', flexShrink: 0 }}>⚽</div>
+          <div style={{ flexShrink: 0, textAlign: 'center', lineHeight: 1 }}>
+            <div style={{ fontSize: '2.4rem' }}>🦁</div>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.05em', marginTop: 2 }}>RAYO</div>
+          </div>
           <p style={{ fontSize: '0.88rem', lineHeight: 1.6, color: 'var(--text)', margin: 0 }}>{mascotMessage}</p>
         </div>
       )}
