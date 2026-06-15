@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useScores } from '../hooks/useScores.js';
 import { usePlayers } from '../hooks/usePlayers.js';
@@ -9,6 +9,75 @@ import { RESULT_TYPES, SCORING, normalizePosition } from '../lib/constants.js';
 import LeaderboardRow from '../components/LeaderboardRow.jsx';
 import SubstitutionModal from '../components/SubstitutionModal.jsx';
 import { getSquadForTeam } from '../lib/wcSquads.js';
+
+const POS_COLOR = { GK: 'var(--gold)', DEF: 'var(--success)', MID: '#3b82f6', FWD: 'var(--danger)' };
+
+function playerPointsFromBreakdown(breakdown, playerId) {
+  let pts = 0;
+  const id = String(playerId);
+  for (const [key, val] of Object.entries(breakdown || {})) {
+    if (key.includes(`_${id}_`) || key.startsWith(`cs_${id}_`) || key.startsWith(`golden_boot_${id}`)) {
+      pts += val;
+    }
+  }
+  return pts;
+}
+
+function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtures, lastFtFixture, nextFixture }) {
+  const msgs = [];
+
+  // Position
+  if (myRank && totalPlayers) {
+    if (myRank === 1) msgs.push(`You're in 1st place! 🥇 Keep it up.`);
+    else if (myRank <= 3) msgs.push(`You're #${myRank} — top 3! 🔥`);
+    else msgs.push(`You're sitting at #${myRank} of ${totalPlayers}.`);
+  }
+
+  // Live game
+  if (liveFixtures.length > 0) {
+    for (const fix of liveFixtures) {
+      const homeTeam = teams.find(t => String(t.api_id) === String(fix.home_team_api_id));
+      const awayTeam = teams.find(t => String(t.api_id) === String(fix.away_team_api_id));
+      const myTeamIsHome = myTeamIds.includes(String(fix.home_team_api_id));
+      const myTeamIsAway = myTeamIds.includes(String(fix.away_team_api_id));
+      if (myTeamIsHome || myTeamIsAway) {
+        const myTeam = myTeamIsHome ? homeTeam : awayTeam;
+        const oppTeam = myTeamIsHome ? awayTeam : homeTeam;
+        const myGoals = myTeamIsHome ? fix.home_goals : fix.away_goals;
+        const oppGoals = myTeamIsHome ? fix.away_goals : fix.home_goals;
+        msgs.push(`🔴 LIVE: ${myTeam?.name || 'Your team'} ${myGoals}–${oppGoals} ${oppTeam?.name || 'Opponent'} (${fix.elapsed}'). Your players are on the pitch!`);
+      }
+    }
+  }
+
+  // Last result
+  if (lastFtFixture) {
+    const homeTeam = teams.find(t => String(t.api_id) === String(lastFtFixture.home_team_api_id));
+    const awayTeam = teams.find(t => String(t.api_id) === String(lastFtFixture.away_team_api_id));
+    const myTeamIsHome = myTeamIds.includes(String(lastFtFixture.home_team_api_id));
+    const myTeam = myTeamIsHome ? homeTeam : awayTeam;
+    const myGoals = myTeamIsHome ? lastFtFixture.home_goals : lastFtFixture.away_goals;
+    const oppGoals = myTeamIsHome ? lastFtFixture.away_goals : lastFtFixture.home_goals;
+    const result = myGoals > oppGoals ? 'won' : myGoals === oppGoals ? 'drew' : 'lost';
+    const emoji = myGoals > oppGoals ? '✅' : myGoals === oppGoals ? '🤝' : '❌';
+    msgs.push(`${emoji} Last result: ${myTeam?.name || 'Your team'} ${result} ${myGoals}–${oppGoals}.`);
+  }
+
+  // Next game
+  if (nextFixture) {
+    const homeTeam = teams.find(t => String(t.api_id) === String(nextFixture.home_team_api_id));
+    const awayTeam = teams.find(t => String(t.api_id) === String(nextFixture.away_team_api_id));
+    const myTeamIsHome = myTeamIds.includes(String(nextFixture.home_team_api_id));
+    const myTeam = myTeamIsHome ? homeTeam : awayTeam;
+    const opp = myTeamIsHome ? awayTeam : homeTeam;
+    const dateStr = nextFixture.date
+      ? new Date(nextFixture.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      : 'soon';
+    msgs.push(`📅 Next up: ${myTeam?.name || 'Your team'} vs ${opp?.name || 'Opponent'} on ${dateStr}.`);
+  }
+
+  return msgs.length > 0 ? msgs.join(' ') : "Waiting for the tournament to heat up! 🏆";
+}
 
 export default function LeaderboardView() {
   const { gameId } = useParams();
@@ -38,6 +107,11 @@ export default function LeaderboardView() {
   const [myPlayerPicks, setMyPlayerPicks] = useState([]);
   const [squadPlayers, setSquadPlayers] = useState({}); // teamApiId -> player objects
 
+  // Live / upcoming fixtures
+  const [liveFixtures, setLiveFixtures] = useState([]);
+  const [upcomingFixtures, setUpcomingFixtures] = useState([]);
+  const [liveEvents, setLiveEvents] = useState([]);
+
   // Host controls
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedResultType, setSelectedResultType] = useState('group_win');
@@ -50,20 +124,50 @@ export default function LeaderboardView() {
   useEffect(() => {
     async function loadData() {
       const myId = session?.playerId;
-      const [{ data: teamsData }, { data: fixturesData }, { data: ppData }, { data: cpData }, { data: subsData }, { data: myPpData }] = await Promise.all([
+      const [
+        { data: teamsData },
+        { data: fixturesData },
+        { data: ppData },
+        { data: cpData },
+        { data: subsData },
+        { data: myPpData },
+        { data: liveData },
+        { data: upcomingData },
+      ] = await Promise.all([
         supabase.from('teams').select('*'),
         supabase.from('fixtures').select('api_id, home_team_api_id, away_team_api_id, home_goals, away_goals, round').eq('status_short', 'FT'),
         supabase.from('player_picks').select('*').eq('game_id', gameId),
         supabase.from('captain_picks').select('*').eq('game_id', gameId),
         supabase.from('substitutions').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
         supabase.from('player_picks').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),
+        supabase.from('fixtures')
+          .select('api_id, home_team_api_id, away_team_api_id, home_goals, away_goals, elapsed, status_short, date')
+          .neq('status_short', 'FT')
+          .not('elapsed', 'is', null),
+        supabase.from('fixtures')
+          .select('api_id, home_team_api_id, away_team_api_id, date, status_short')
+          .eq('status_short', 'NS')
+          .order('date', { ascending: true }),
       ]);
+
       setTeams(teamsData || []);
       setFixtures(fixturesData || []);
       setPlayerPicksAll(ppData || []);
       setCaptainPicksAll(cpData || []);
       setMySubstitutions(subsData || []);
       setMyPlayerPicks(myPpData || []);
+      setLiveFixtures(liveData || []);
+      setUpcomingFixtures(upcomingData || []);
+
+      // Fetch match events for live fixtures
+      const liveIds = (liveData || []).map(f => f.api_id);
+      if (liveIds.length > 0) {
+        const { data: eventsData } = await supabase
+          .from('match_events')
+          .select('fixture_api_id, player_api_id, type')
+          .in('fixture_api_id', liveIds);
+        setLiveEvents(eventsData || []);
+      }
 
       // Only fetch players that are actually picked in this game
       const pickedIds = [...new Set((ppData || []).map(p => p.player_api_id).filter(Boolean))];
@@ -212,6 +316,40 @@ export default function LeaderboardView() {
   // My teams with player picks (accounting for subs)
   const myId = session?.playerId;
   const myDraftPicks = picks.filter(p => p.game_player_id === myId);
+  const myScore = scores.find(s => s.game_player_id === myId);
+  const myRank = myId ? leaderboardEntries.findIndex(e => e.player.id === myId) + 1 : null;
+  const totalPlayers = leaderboardEntries.length;
+
+  // My team api ids for mascot
+  const myTeamIds = myDraftPicks.map(dp => String(dp.team_api_id));
+
+  // Last FT fixture involving my teams
+  const ftFixtures = fixtures; // already FT
+  const lastFtFixture = useMemo(() => {
+    if (!myTeamIds.length) return null;
+    const relevant = ftFixtures.filter(f =>
+      myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
+    );
+    return relevant.length > 0 ? relevant[relevant.length - 1] : null;
+  }, [ftFixtures, myTeamIds]);
+
+  // Next upcoming fixture involving my teams
+  const nextFixture = useMemo(() => {
+    if (!myTeamIds.length) return null;
+    return upcomingFixtures.find(f =>
+      myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))
+    ) || null;
+  }, [upcomingFixtures, myTeamIds]);
+
+  const mascotMessage = useMemo(() => buildMascotMessage({
+    myRank: myRank || null,
+    totalPlayers,
+    myTeamIds,
+    teams,
+    liveFixtures,
+    lastFtFixture,
+    nextFixture,
+  }), [myRank, totalPlayers, myTeamIds, teams, liveFixtures, lastFtFixture, nextFixture]);
 
   function getActivePlayers(draftPickId, teamApiId) {
     const base = myPlayerPicks.filter(p => p.draft_pick_id === draftPickId);
@@ -221,6 +359,10 @@ export default function LeaderboardView() {
       ? { ...p, player_api_id: sub.new_player_api_id, subbed: true }
       : p
     );
+  }
+
+  function resolvePlayerObj(apiId) {
+    return allPlayers.find(p => String(p.api_id) === String(apiId)) || null;
   }
 
   function resolvePlayerName(apiId, teamApiId) {
@@ -239,10 +381,9 @@ export default function LeaderboardView() {
     return local ? normalizePosition(local.position) : '?';
   }
 
-  const POS_COLOR = { GK: 'var(--gold)', DEF: 'var(--success)', MID: '#3b82f6', FWD: 'var(--danger)' };
-
   return (
     <div className="page">
+      {/* 1. Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 className="page-title" style={{ margin: 0 }}>Leaderboard</h1>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -267,19 +408,73 @@ export default function LeaderboardView() {
         </div>
       </div>
 
-      {/* My Squad & Subs — shown to logged-in users */}
+      {/* 2. Mascot Assistant */}
+      {myId && (
+        <div className="card mb-16" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'rgba(255,215,0,0.04)', border: '1px solid rgba(255,215,0,0.2)' }}>
+          <div style={{ fontSize: '2.2rem', flexShrink: 0 }}>⚽</div>
+          <p style={{ fontSize: '0.88rem', lineHeight: 1.6, color: 'var(--text)', margin: 0 }}>{mascotMessage}</p>
+        </div>
+      )}
+
+      {/* 3. Leaderboard rankings */}
+      {scoresLoading ? (
+        <div className="loading"><div className="spinner" /></div>
+      ) : leaderboardEntries.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state__icon">🏆</div>
+          <div className="empty-state__text">No scores yet</div>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 24 }}>
+          {leaderboardEntries.map(({ player, score }, i) => (
+            <LeaderboardRow
+              key={player.id}
+              rank={i + 1}
+              player={player}
+              score={score}
+              picks={picks}
+              playerPicks={playerPicksAll}
+              captainPickId={captainMap[player.id]}
+              teams={teams}
+              fixtures={fixtures}
+              players={allPlayers}
+              isExpanded={expandedRow === player.id}
+              onToggle={() => setExpandedRow(expandedRow === player.id ? null : player.id)}
+              isHost={isHost}
+              onOverride={isHost ? handleOverride : null}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* 4. My Squad — player card grid */}
       {myId && myDraftPicks.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div className="section-header">My Squad</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {myDraftPicks.map(dp => {
               const team = teams.find(t => String(t.api_id) === String(dp.team_api_id));
               const activePlayers = getActivePlayers(dp.id, dp.team_api_id);
               const subUsed = mySubstitutions.some(s => s.draft_pick_id === dp.id);
+              const isLive = liveFixtures.some(f =>
+                String(f.home_team_api_id) === String(dp.team_api_id) ||
+                String(f.away_team_api_id) === String(dp.team_api_id)
+              );
               return (
                 <div key={dp.id} className="card" style={{ padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{team?.name || dp.team_code}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{team?.name || dp.team_code}</span>
+                      {isLive && (
+                        <span style={{
+                          fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger)',
+                          background: 'rgba(239,68,68,0.12)', padding: '2px 7px', borderRadius: 100,
+                          animation: 'pulse 1.5s ease-in-out infinite',
+                        }}>
+                          🔴 LIVE
+                        </span>
+                      )}
+                    </div>
                     {subUsed ? (
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Sub used ✓</span>
                     ) : (
@@ -292,24 +487,65 @@ export default function LeaderboardView() {
                       </button>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {activePlayers.map(p => {
                       const pos = resolvePlayerPos(p.player_api_id, dp.team_api_id);
+                      const posColor = POS_COLOR[pos] || 'var(--border)';
+                      const playerName = resolvePlayerName(p.player_api_id, dp.team_api_id);
+                      const player = resolvePlayerObj(p.player_api_id);
+                      const playerPts = playerPointsFromBreakdown(myScore?.breakdown, p.player_api_id);
                       return (
-                        <span key={p.player_api_id} style={{
-                          fontSize: '0.78rem', fontWeight: 600,
-                          padding: '3px 8px', borderRadius: 100,
-                          background: 'rgba(255,255,255,0.05)',
-                          border: `1px solid ${POS_COLOR[pos] || 'var(--border)'}`,
-                          color: p.subbed ? 'var(--success)' : 'var(--text)',
-                        }}>
-                          <span style={{ fontSize: '0.65rem', color: POS_COLOR[pos], fontWeight: 700, marginRight: 4 }}>{pos}</span>
-                          {resolvePlayerName(p.player_api_id, dp.team_api_id)}
-                          {p.subbed && ' ↑'}
-                        </span>
+                        <div key={p.player_api_id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72 }}>
+                          {/* Photo circle with position-colored border */}
+                          <div style={{
+                            width: 52, height: 52, borderRadius: '50%',
+                            border: `3px solid ${posColor}`,
+                            overflow: 'hidden', background: 'var(--dark-bg)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}>
+                            {player?.photo_url ? (
+                              <img
+                                src={player.photo_url?.includes('cdn.sofifa.net')
+                                  ? `https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1/img-proxy?url=${encodeURIComponent(player.photo_url)}`
+                                  : player.photo_url}
+                                alt={player.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={e => { e.target.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: '1.2rem', color: posColor }}>👤</span>
+                            )}
+                          </div>
+                          {/* Name */}
+                          <span style={{
+                            fontSize: '0.68rem', fontWeight: 600, textAlign: 'center', lineHeight: 1.2,
+                            maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            color: p.subbed ? 'var(--success)' : 'var(--text)',
+                          }}>
+                            {playerName}{p.subbed ? ' ↑' : ''}
+                          </span>
+                          {/* Position badge */}
+                          <span style={{
+                            fontSize: '0.6rem', fontWeight: 700, padding: '1px 5px',
+                            borderRadius: 100, background: `${posColor}22`, color: posColor,
+                          }}>
+                            {pos}
+                          </span>
+                          {/* Points from this player */}
+                          {playerPts !== 0 && (
+                            <span style={{
+                              fontSize: '0.68rem', fontWeight: 700,
+                              color: playerPts > 0 ? 'var(--success)' : 'var(--danger)',
+                            }}>
+                              {playerPts > 0 ? '+' : ''}{playerPts}pts
+                            </span>
+                          )}
+                        </div>
                       );
                     })}
-                    {activePlayers.length === 0 && <span className="text-muted text-sm">No players picked</span>}
+                    {activePlayers.length === 0 && (
+                      <span className="text-muted text-sm">No players picked</span>
+                    )}
                   </div>
                 </div>
               );
@@ -333,36 +569,7 @@ export default function LeaderboardView() {
         />
       )}
 
-      {scoresLoading ? (
-        <div className="loading"><div className="spinner" /></div>
-      ) : leaderboardEntries.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state__icon">🏆</div>
-          <div className="empty-state__text">No scores yet</div>
-        </div>
-      ) : (
-        <div>
-          {leaderboardEntries.map(({ player, score }, i) => (
-            <LeaderboardRow
-              key={player.id}
-              rank={i + 1}
-              player={player}
-              score={score}
-              picks={picks}
-              playerPicks={playerPicksAll}
-              captainPickId={captainMap[player.id]}
-              teams={teams}
-              fixtures={fixtures}
-              players={allPlayers}
-              isExpanded={expandedRow === player.id}
-              onToggle={() => setExpandedRow(expandedRow === player.id ? null : player.id)}
-              isHost={isHost}
-              onOverride={isHost ? handleOverride : null}
-            />
-          ))}
-        </div>
-      )}
-
+      {/* 5. Host controls */}
       {isHost && (
         <div className="card mt-24">
           <div className="section-header">Host Controls</div>
