@@ -9,6 +9,7 @@ import { RESULT_TYPES, SCORING, normalizePosition } from '../lib/constants.js';
 import LeaderboardRow from '../components/LeaderboardRow.jsx';
 import SubstitutionModal from '../components/SubstitutionModal.jsx';
 import { getSquadForTeam } from '../lib/wcSquads.js';
+import MascotHint from '../components/MascotHint.jsx';
 
 const POS_COLOR = { GK: 'var(--gold)', DEF: 'var(--success)', MID: '#3b82f6', FWD: 'var(--danger)' };
 
@@ -514,13 +515,12 @@ export default function LeaderboardView() {
 
       {/* 2. Mascot Assistant */}
       {myId && (
-        <div className="card mb-16" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: 'rgba(255,215,0,0.04)', border: '1px solid rgba(255,215,0,0.2)' }}>
-          <div style={{ flexShrink: 0, textAlign: 'center', lineHeight: 1 }}>
-            <div style={{ fontSize: '2.4rem' }}>🦁</div>
-            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.05em', marginTop: 2 }}>RAYO</div>
-          </div>
-          <p style={{ fontSize: '0.88rem', lineHeight: 1.6, color: 'var(--text)', margin: 0 }}>{mascotMessage}</p>
-        </div>
+        <MascotHint
+          message={mascotMessage}
+          pose={liveFixtures.some(f => myTeamIds.includes(String(f.home_team_api_id)) || myTeamIds.includes(String(f.away_team_api_id))) ? 'excited' : 'idle'}
+          size={72}
+          style={{ marginBottom: 16 }}
+        />
       )}
 
       {/* 3. Leaderboard rankings */}
