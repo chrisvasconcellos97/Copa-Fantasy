@@ -25,57 +25,44 @@ function playerPointsFromBreakdown(breakdown, playerId) {
 
 function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtures, lastFtFixture, nextFixture, playerName }) {
   const msgs = [];
-  const name = playerName ? playerName.split(' ')[0] : 'champ';
+  const name = playerName ? playerName.split(' ')[0] : null;
 
-  // Position — with personality
+  // Position
   if (myRank && totalPlayers) {
     if (myRank === 1) {
-      const taunts = [
-        `${name} is running this thing. The others might as well be picking teams blindfolded. 👑`,
-        `1st place. Honestly surprised anyone else even showed up. 👑`,
-        `Top of the table, baby. Your opponents are busy Googling "how to get better at Copa Fantasy." 👑`,
-      ];
-      msgs.push(taunts[Math.floor(Date.now() / 60000) % taunts.length]);
+      msgs.push(`You're in first. The others have been informed and are devastated.`);
     } else if (myRank === 2) {
-      msgs.push(`2nd place. So close to glory you can almost taste it — but so far it just tastes like someone else's victory. 😤`);
+      msgs.push(`Silver medal. The participation trophy for people who almost won.`);
     } else if (myRank === 3) {
-      msgs.push(`3rd. Podium finish, technically. Bronze is still a medal... they give those out at the Olympics for a reason. 🥉`);
+      msgs.push(`Podium, technically. Nobody remembers 3rd but it counts.`);
     } else if (myRank === totalPlayers) {
-      const roasts = [
-        `Dead last. ${name}, we need to talk about your life choices. 💀`,
-        `Last place. At this point your teams are more of a charity donation to the group. 💀`,
-        `Bottom of the table. Your picks are so bad they should come with a warning label. 💀`,
-      ];
-      msgs.push(roasts[Math.floor(Date.now() / 60000) % roasts.length]);
+      msgs.push(`Dead last${name ? `, ${name}` : ''}. We've notified your next of kin.`);
     } else {
-      msgs.push(`#${myRank} of ${totalPlayers}. Perfectly mediocre — like a 0-0 draw that somehow took 90 minutes. Keep grinding. 😅`);
+      msgs.push(`#${myRank} of ${totalPlayers}. Exactly where you'd be if you'd picked teams with your eyes closed. Which, looking at your squad, maybe you did.`);
     }
   }
 
-  // Live game — excited commentary
-  if (liveFixtures.length > 0) {
-    for (const fix of liveFixtures) {
-      const homeTeam = teams.find(t => String(t.api_id) === String(fix.home_team_api_id));
-      const awayTeam = teams.find(t => String(t.api_id) === String(fix.away_team_api_id));
-      const myTeamIsHome = myTeamIds.includes(String(fix.home_team_api_id));
-      const myTeamIsAway = myTeamIds.includes(String(fix.away_team_api_id));
-      if (myTeamIsHome || myTeamIsAway) {
-        const myTeam = myTeamIsHome ? homeTeam : awayTeam;
-        const oppTeam = myTeamIsHome ? awayTeam : homeTeam;
-        const myGoals = myTeamIsHome ? (fix.home_goals ?? 0) : (fix.away_goals ?? 0);
-        const oppGoals = myTeamIsHome ? (fix.away_goals ?? 0) : (fix.home_goals ?? 0);
-        if (myGoals > oppGoals) {
-          msgs.push(`🔴 LIVE: ${myTeam?.name} ${myGoals}–${oppGoals} ${oppTeam?.name} (${fix.elapsed}'). They're WINNING. Try to act casual. 🤌`);
-        } else if (myGoals < oppGoals) {
-          msgs.push(`🔴 LIVE: ${myTeam?.name} ${myGoals}–${oppGoals} ${oppTeam?.name} (${fix.elapsed}'). Losing. It's fine. It's fine. EVERYTHING IS FINE. 😰`);
-        } else {
-          msgs.push(`🔴 LIVE: ${myTeam?.name} ${myGoals}–${oppGoals} ${oppTeam?.name} (${fix.elapsed}'). A draw so far — the football equivalent of a shrug emoji. 🤷`);
-        }
-      }
+  // Live game
+  for (const fix of liveFixtures) {
+    const homeTeam = teams.find(t => String(t.api_id) === String(fix.home_team_api_id));
+    const awayTeam = teams.find(t => String(t.api_id) === String(fix.away_team_api_id));
+    const myTeamIsHome = myTeamIds.includes(String(fix.home_team_api_id));
+    const myTeamIsAway = myTeamIds.includes(String(fix.away_team_api_id));
+    if (!myTeamIsHome && !myTeamIsAway) continue;
+    const myTeam = myTeamIsHome ? homeTeam : awayTeam;
+    const opp = myTeamIsHome ? awayTeam : homeTeam;
+    const myGoals = myTeamIsHome ? (fix.home_goals ?? 0) : (fix.away_goals ?? 0);
+    const oppGoals = myTeamIsHome ? (fix.away_goals ?? 0) : (fix.home_goals ?? 0);
+    if (myGoals > oppGoals) {
+      msgs.push(`🔴 ${myTeam?.name} are winning ${myGoals}–${oppGoals} against ${opp?.name} right now. Go ahead and start celebrating — what could possibly go wrong in the next few minutes.`);
+    } else if (myGoals < oppGoals) {
+      msgs.push(`🔴 ${myTeam?.name} are down ${myGoals}–${oppGoals} to ${opp?.name} at the ${fix.elapsed}th. On the bright side, it builds character. Lots and lots of character.`);
+    } else {
+      msgs.push(`🔴 ${myTeam?.name} vs ${opp?.name} is ${myGoals}–${oppGoals} at the ${fix.elapsed}th. Both teams showed up. That's about all that can be said.`);
     }
   }
 
-  // Last result — snarky recap
+  // Last result
   if (lastFtFixture) {
     const homeTeam = teams.find(t => String(t.api_id) === String(lastFtFixture.home_team_api_id));
     const awayTeam = teams.find(t => String(t.api_id) === String(lastFtFixture.away_team_api_id));
@@ -85,25 +72,15 @@ function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtur
     const myGoals = myTeamIsHome ? lastFtFixture.home_goals : lastFtFixture.away_goals;
     const oppGoals = myTeamIsHome ? lastFtFixture.away_goals : lastFtFixture.home_goals;
     if (myGoals > oppGoals) {
-      const wins = [
-        `${myTeam?.name} put ${opp?.name} to the sword ${myGoals}–${oppGoals}. Chef's kiss. 💋`,
-        `${myTeam?.name} beat ${opp?.name} ${myGoals}–${oppGoals}. ${opp?.name} is going home to cry. ✅`,
-        `${myGoals}–${oppGoals} over ${opp?.name}. ${myTeam?.name} said "not today." 💪`,
-      ];
-      msgs.push(wins[Math.floor((myGoals + oppGoals) % wins.length)]);
+      msgs.push(`${myTeam?.name} beat ${opp?.name} ${myGoals}–${oppGoals}. Your players were on the pitch for it and everything.`);
     } else if (myGoals === oppGoals) {
-      msgs.push(`${myTeam?.name} drew ${myGoals}–${oppGoals} with ${opp?.name}. A point shared is a point… that helps nobody in fantasy. 🤝`);
+      msgs.push(`${myTeam?.name} drew ${myGoals}–${oppGoals} with ${opp?.name}. A point. Sure.`);
     } else {
-      const losses = [
-        `${myTeam?.name} lost ${myGoals}–${oppGoals} to ${opp?.name}. That one hurt. Moment of silence. 😶`,
-        `${opp?.name} dismantled ${myTeam?.name} ${oppGoals}–${myGoals}. Not great, ${name}. Not great. ❌`,
-        `${myTeam?.name} lost ${myGoals}–${oppGoals}. At least the players looked great doing it. Probably. ❌`,
-      ];
-      msgs.push(losses[Math.floor((myGoals + oppGoals) % losses.length)]);
+      msgs.push(`${myTeam?.name} lost ${myGoals}–${oppGoals} to ${opp?.name}. Your picks were present and accounted for. Unfortunately.`);
     }
   }
 
-  // Next game — hype or dread
+  // Next game
   if (nextFixture) {
     const homeTeam = teams.find(t => String(t.api_id) === String(nextFixture.home_team_api_id));
     const awayTeam = teams.find(t => String(t.api_id) === String(nextFixture.away_team_api_id));
@@ -113,21 +90,11 @@ function buildMascotMessage({ myRank, totalPlayers, myTeamIds, teams, liveFixtur
     const dateStr = nextFixture.date
       ? new Date(nextFixture.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
       : 'soon';
-    const previews = [
-      `📅 ${myTeam?.name} vs ${opp?.name} on ${dateStr}. Pray to whatever football gods you believe in.`,
-      `📅 Up next: ${myTeam?.name} face ${opp?.name} on ${dateStr}. Time to get nervous again.`,
-      `📅 ${opp?.name} visit on ${dateStr}. ${myTeam?.name} better show up.`,
-    ];
-    msgs.push(previews[Math.floor(Date.now() / 3600000) % previews.length]);
+    msgs.push(`${myTeam?.name} face ${opp?.name} on ${dateStr}. You're not nervous. You're definitely not nervous.`);
   }
 
   if (msgs.length === 0) {
-    const idle = [
-      `Scores are coming. Until then, enjoy the false sense of security. ⚽`,
-      `Nothing to report yet. Your teams are warming up. Or so we hope. ⚽`,
-      `All quiet on the Copa front. The chaos is coming, ${name}. Brace yourself. ⚽`,
-    ];
-    return idle[Math.floor(Date.now() / 60000) % idle.length];
+    return `Nothing to report. Your teams are presumably doing warmups somewhere, unbothered by your anxiety.`;
   }
 
   return msgs.join(' ');
