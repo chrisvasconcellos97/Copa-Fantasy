@@ -418,7 +418,7 @@ export default function LeaderboardView() {
         { data: upcomingData },
       ] = await Promise.all([
         supabase.from('teams').select('*'),
-        supabase.from('fixtures').select('api_id, home_team_api_id, away_team_api_id, home_goals, away_goals, round').eq('status_short', 'FT'),
+        supabase.from('fixtures').select('api_id, home_team_api_id, away_team_api_id, home_goals, away_goals, round, kickoff').eq('status_short', 'FT').order('kickoff', { ascending: true }),
         supabase.from('player_picks').select('*').eq('game_id', gameId),
         supabase.from('captain_picks').select('*').eq('game_id', gameId),
         supabase.from('substitutions').select('*').eq('game_id', gameId).eq('game_player_id', myId || ''),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 
 const RANK_COLORS = {
   1: 'var(--gold)',
@@ -26,6 +26,15 @@ export default function LeaderboardRow({
   const [overrideDesc, setOverrideDesc] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(player.player_name);
+  const [expandedFixtures, setExpandedFixtures] = useState(new Set());
+
+  const toggleFixture = useCallback((fixId) => {
+    setExpandedFixtures(prev => {
+      const next = new Set(prev);
+      next.has(fixId) ? next.delete(fixId) : next.add(fixId);
+      return next;
+    });
+  }, []);
 
   const rankColor = RANK_COLORS[rank] || 'var(--text-muted)';
   const totalPoints = score?.total_points ?? 0;
@@ -68,7 +77,9 @@ export default function LeaderboardRow({
     if (/^upset_/.test(key)) return '💥 Upset bonus';
     if ((m = key.match(/^group_finish_(\d+)_r(\d+)$/))) {
       const t = teamByApiId(m[1]);
-      return m[2] === '1' ? `🏆 Won group — ${t?.name || m[1]}` : `✅ Qualified — ${t?.name || m[1]}`;
+      const rank = m[2];
+      const label = rank === '1' ? '🏆 Won group' : rank === '2' ? '✅ Qualified (2nd)' : '✅ Qualified (3rd)';
+      return `${label} — ${t?.name || m[1]}`;
     }
     if ((m = key.match(/^player_(\d+)_(goal|assist|yellow_card|red_card|own_goal|penalty_save)_/))) {
       const labels = { goal: '⚽ Goal', assist: '🎯 Assist', yellow_card: '🟨 Yellow card', red_card: '🟥 Red card', own_goal: '😬 Own goal', penalty_save: '🧤 Penalty save' };
@@ -94,7 +105,9 @@ export default function LeaderboardRow({
         other.push({ key, val, label: formatEntry(key, val) });
       }
     }
-    return { byFixture: [...fixtureMap.entries()], other };
+    // Sort fixtures chronologically by api_id (which increments with kickoff order)
+    const sorted = [...fixtureMap.entries()].sort((a, b) => Number(a[0]) - Number(b[0]));
+    return { byFixture: sorted, other };
   }
 
   function handleOverride(e) {
@@ -274,15 +287,15 @@ export default function LeaderboardRow({
             </div>
           )}
 
-          {/* Score breakdown grouped by fixture */}
+          {/* Score breakdown grouped by fixture — collapsed by default */}
           {Object.keys(breakdown).length > 0 && (() => {
             const { byFixture, other } = groupedBreakdown();
             return (
               <div>
-                <div className="text-muted text-xs" style={{ marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div className="text-muted text-xs" style={{ marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Points Breakdown
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {byFixture.map(([fixId, { fix, entries }]) => {
                     const homeTeam = fix ? teamByApiId(fix.home_team_api_id) : null;
                     const awayTeam = fix ? teamByApiId(fix.away_team_api_id) : null;
@@ -290,38 +303,71 @@ export default function LeaderboardRow({
                     const header = homeTeam && awayTeam
                       ? `${homeTeam.name} ${fix.home_goals}–${fix.away_goals} ${awayTeam.name}`
                       : `Match #${fixId}`;
+                    const open = expandedFixtures.has(fixId);
                     return (
-                      <div key={fixId} style={{ borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)' }}>{header}</span>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: fixTotal >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                            {fixTotal >= 0 ? '+' : ''}{fixTotal}
-                          </span>
-                        </div>
-                        {entries.map(({ key, val, label }) => (
-                          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', gap: 8 }}>
-                            <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                            <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
-                              {val >= 0 ? '+' : ''}{val}
+                      <div key={fixId} style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                        {/* Fixture header row — always visible, click to expand */}
+                        <div
+                          onClick={() => toggleFixture(fixId)}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', cursor: 'pointer', background: open ? 'rgba(255,255,255,0.04)' : 'transparent', userSelect: 'none' }}
+                        >
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)' }}>{header}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: fixTotal >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                              {fixTotal >= 0 ? '+' : ''}{fixTotal}
                             </span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
                           </div>
-                        ))}
+                        </div>
+                        {/* Expanded detail */}
+                        {open && (
+                          <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {entries.map(({ key, val, label }) => (
+                              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', gap: 8 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                                <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
+                                  {val >= 0 ? '+' : ''}{val}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                  {other.length > 0 && (
-                    <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 10 }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Tournament Bonuses</div>
-                      {other.map(({ key, val, label }) => (
-                        <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', gap: 8 }}>
-                          <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                          <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
-                            {val >= 0 ? '+' : ''}{val}
-                          </span>
+                  {other.length > 0 && (() => {
+                    const otherId = '__other__';
+                    const otherTotal = other.reduce((s, e) => s + e.val, 0);
+                    const open = expandedFixtures.has(otherId);
+                    return (
+                      <div style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                        <div
+                          onClick={() => toggleFixture(otherId)}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', cursor: 'pointer', background: open ? 'rgba(255,255,255,0.04)' : 'transparent', userSelect: 'none' }}
+                        >
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)' }}>Tournament Bonuses</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: otherTotal >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                              {otherTotal >= 0 ? '+' : ''}{otherTotal}
+                            </span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        {open && (
+                          <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {other.map(({ key, val, label }) => (
+                              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', gap: 8 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                                <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
+                                  {val >= 0 ? '+' : ''}{val}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
