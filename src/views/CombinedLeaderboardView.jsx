@@ -69,7 +69,7 @@ export default function CombinedLeaderboardView() {
           GROUP {group.label}
         </div>
         {group.ranked.map((entry, i) => (
-          <div key={entry.name} style={{
+          <div key={`${group.label}-${i}-${entry.name}`} style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',

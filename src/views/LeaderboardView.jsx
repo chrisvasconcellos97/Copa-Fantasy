@@ -5,7 +5,7 @@ import { usePlayers } from '../hooks/usePlayers.js';
 import { useDraft } from '../hooks/useDraft.js';
 import { getSession } from '../lib/session.js';
 import { supabase } from '../lib/supabase.js';
-import { RESULT_TYPES, SCORING, normalizePosition } from '../lib/constants.js';
+import { RESULT_TYPES, normalizePosition } from '../lib/constants.js';
 import LeaderboardRow from '../components/LeaderboardRow.jsx';
 import SubstitutionModal from '../components/SubstitutionModal.jsx';
 import { getSquadForTeam } from '../lib/wcSquads.js';
@@ -348,17 +348,24 @@ export default function LeaderboardView() {
   const { players } = usePlayers(gameId);
   const { picks } = useDraft(gameId);
   const session = getSession();
-  const isHost = Boolean(session?.hostToken);
   const [linkedGameId, setLinkedGameId] = useState(null);
   const [joinCode, setJoinCode] = useState(null);
+  const [gameHostToken, setGameHostToken] = useState(null);
+  const [teamsPerPlayer, setTeamsPerPlayer] = useState(8);
   const [codeCopied, setCodeCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Host status must be verified against THIS game's host token — not just
+  // "do I hold any host token" (which would grant host controls on every game).
+  const isHost = Boolean(session?.hostToken && gameHostToken && session.hostToken === gameHostToken);
+
   useEffect(() => {
-    supabase.from('games').select('linked_game_id, join_code').eq('id', gameId).single()
+    supabase.from('games').select('linked_game_id, join_code, host_token, teams_per_player').eq('id', gameId).single()
       .then(({ data }) => {
         if (data?.linked_game_id) setLinkedGameId(data.linked_game_id);
         if (data?.join_code) setJoinCode(data.join_code);
+        if (data?.host_token) setGameHostToken(data.host_token);
+        if (data?.teams_per_player) setTeamsPerPlayer(data.teams_per_player);
       });
   }, [gameId]);
 
@@ -467,7 +474,7 @@ export default function LeaderboardView() {
     setHostLoading(true);
     setHostMsg('');
     try {
-      const pts = SCORING[selectedResultType] || 0;
+      const pts = RESULT_TYPES.find(r => r.value === selectedResultType)?.points || 0;
       // Find all game_players who have this team
       const gamePickers = picks
         .filter(p => p.team_api_id === selectedTeamId)
@@ -839,6 +846,7 @@ export default function LeaderboardView() {
               playerPicks={playerPicksAll}
               captainPickId={captainMap[player.id]}
               teams={teams}
+              totalTeams={teamsPerPlayer}
               fixtures={fixtures}
               players={allPlayers}
               isExpanded={expandedRow === player.id}

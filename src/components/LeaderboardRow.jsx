@@ -14,6 +14,7 @@ export default function LeaderboardRow({
   playerPicks,
   captainPickId,
   teams,
+  totalTeams = 8,
   fixtures,
   players,
   isExpanded,
@@ -197,7 +198,7 @@ export default function LeaderboardRow({
 
         {/* Teams count */}
         <span className="text-muted text-sm" style={{ marginRight: 4 }}>
-          {myTeams.length}/8 🏳️
+          {myTeams.length}/{totalTeams} 🏳️
         </span>
 
         {/* Points */}

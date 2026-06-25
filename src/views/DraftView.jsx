@@ -436,7 +436,7 @@ export default function DraftView() {
       if (!draftPick) { allOk = false; continue; }
       await _savePicksForTeam(teamApiId, playerIds, draftPick);
     }
-    if (!allOk) alert('Some teams are missing picks — make sure each team has exactly 3 players selected.');
+    if (!allOk) alert(`Some teams are missing picks — make sure each team has exactly ${PICKS_PER_TEAM} players selected.`);
   }
 
   async function handleSaveCaptain() {
@@ -617,6 +617,7 @@ export default function DraftView() {
               currentPickerIndex={currentPickerIndex}
               onPoke={handlePoke}
               teams={teams}
+              totalRounds={TOTAL_ROUNDS}
             />
           )}
 
@@ -839,7 +840,7 @@ export default function DraftView() {
                         const sel = selectedPlayerIds[activeTeamTab] || [];
                         const squad = teamPlayers[activeTeamTab] || [];
                         const posPicked = sel.map(id => normalizePosition(squad.find(p => p.api_id === id)?.position)).filter(Boolean);
-                        return `${sel.length}/3${posPicked.length ? ' — ' + posPicked.join(', ') : ''}`;
+                        return `${sel.length}/${PICKS_PER_TEAM}${posPicked.length ? ' — ' + posPicked.join(', ') : ''}`;
                       })()}
                     </span>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

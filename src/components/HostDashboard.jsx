@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function HostDashboard({ players, picks, currentPickerIndex, onPoke, teams }) {
+export default function HostDashboard({ players, picks, currentPickerIndex, onPoke, teams, totalRounds = 8 }) {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="section-title" style={{ marginBottom: 12 }}>
@@ -58,7 +58,7 @@ export default function HostDashboard({ players, picks, currentPickerIndex, onPo
                   padding: '2px 8px',
                 }}
               >
-                {playerPicks.length}/8 teams
+                {playerPicks.length}/{totalRounds} teams
               </span>
 
               {/* Poke button (only for current picker) */}
@@ -87,7 +87,7 @@ export default function HostDashboard({ players, picks, currentPickerIndex, onPo
         <div className="flex items-center justify-between mb-4">
           <span className="text-muted text-sm">Draft progress</span>
           <span className="text-muted text-sm">
-            {picks.length} / {players.length * 8} picks
+            {picks.length} / {players.length * totalRounds} picks
           </span>
         </div>
         <div className="progress-bar">
@@ -95,7 +95,7 @@ export default function HostDashboard({ players, picks, currentPickerIndex, onPo
             className="progress-bar-fill"
             style={{
               width: players.length > 0
-                ? `${Math.round((picks.length / (players.length * 8)) * 100)}%`
+                ? `${Math.round((picks.length / (players.length * totalRounds)) * 100)}%`
                 : '0%',
             }}
           />

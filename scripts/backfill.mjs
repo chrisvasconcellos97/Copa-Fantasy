@@ -127,10 +127,11 @@ async function main() {
         api_id: String(f.id),
         home_team_api_id: String(teams.home.id),
         away_team_api_id: String(teams.away.id),
-        home_score: goals?.home ?? null,
-        away_score: goals?.away ?? null,
-        status: f.status?.short || 'NS',
-        kickoff_at: f.date || null,
+        // Column names must match what the app reads (home_goals/away_goals/status_short/kickoff).
+        home_goals: goals?.home ?? null,
+        away_goals: goals?.away ?? null,
+        status_short: f.status?.short || 'NS',
+        kickoff: f.date || null,
       }, { onConflict: 'api_id' });
       if (error) console.error(`  Error upserting fixture ${f.id}:`, error.message);
     }
