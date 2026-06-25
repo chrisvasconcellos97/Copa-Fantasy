@@ -4,6 +4,7 @@ import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
 import { getSession, setSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
+import { generateUniqueJoinCode } from '../lib/gameCode';
 import CopyCode from '../components/CopyCode';
 import MascotHint from '../components/MascotHint';
 
@@ -73,7 +74,7 @@ export default function LobbyView() {
         .insert({
           status: 'lobby',
           host_token: game.host_token,
-          join_code: generateJoinCode(),
+          join_code: await generateUniqueJoinCode(),
           teams_per_player: game.teams_per_player ?? 8,
           players_per_team: game.players_per_team ?? 3,
           linked_game_id: gameId,
@@ -250,6 +251,7 @@ export default function LobbyView() {
                     onClick={(e) => { e.stopPropagation(); handleBootPlayer(player.id); }}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '0.8rem', padding: '2px 6px', opacity: 0.6 }}
                     title="Remove player"
+                    aria-label={`Remove ${player.player_name}`}
                   >✕</button>
                 )}
               </div>
@@ -340,11 +342,4 @@ export default function LobbyView() {
       )}
     </div>
   );
-}
-
-function generateJoinCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
 }

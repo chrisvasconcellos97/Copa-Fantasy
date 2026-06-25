@@ -189,6 +189,7 @@ export default function LeaderboardRow({
               {isHost && onRename && (
                 <button
                   onClick={e => { e.stopPropagation(); setEditingName(true); setNameValue(player.player_name); }}
+                  aria-label={`Rename ${player.player_name}`}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 4px', lineHeight: 1, opacity: 0.6 }}
                 >✏️</button>
               )}

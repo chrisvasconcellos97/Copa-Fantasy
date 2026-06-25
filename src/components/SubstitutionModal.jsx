@@ -100,7 +100,7 @@ export default function SubstitutionModal({ gameId, gamePlayerId, draftPick, tea
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <h2 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--gold)' }}>🔄 Make a Sub — {team?.name}</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginBottom: 20 }}>You get one sub per team. Pick who goes out, then who comes in (same position only).</p>
 

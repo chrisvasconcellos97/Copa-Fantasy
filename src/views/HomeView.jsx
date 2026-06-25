@@ -4,15 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
 import { setSession } from '../lib/session';
-
-function generateJoinCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
+import { generateUniqueJoinCode } from '../lib/gameCode';
 
 export default function HomeView() {
   const navigate = useNavigate();
@@ -77,12 +69,12 @@ export default function HomeView() {
     try {
       const hostToken = uuidv4();
       const playerToken = uuidv4();
-      const joinCode = generateJoinCode();
+      const newJoinCode = await generateUniqueJoinCode();
 
       // Create game
       const { data: game, error: gameErr } = await supabase
         .from('games')
-        .insert({ status: 'lobby', host_token: hostToken, join_code: joinCode, teams_per_player: teamsPerPlayer, players_per_team: playersPerTeam })
+        .insert({ status: 'lobby', host_token: hostToken, join_code: newJoinCode, teams_per_player: teamsPerPlayer, players_per_team: playersPerTeam })
         .select()
         .single();
       if (gameErr) throw gameErr;
