@@ -4,7 +4,7 @@ import { useScores } from '../hooks/useScores.js';
 import { usePlayers } from '../hooks/usePlayers.js';
 import { useDraft } from '../hooks/useDraft.js';
 import { getSession } from '../lib/session.js';
-import { supabase } from '../lib/supabase.js';
+import { supabase, SUPABASE_ANON_KEY, FUNCTIONS_URL } from '../lib/supabase.js';
 import { RESULT_TYPES, normalizePosition } from '../lib/constants.js';
 import LeaderboardRow from '../components/LeaderboardRow.jsx';
 import SubstitutionModal from '../components/SubstitutionModal.jsx';
@@ -550,8 +550,8 @@ export default function LeaderboardView() {
   async function handleRecalculate() {
     setHostLoading(true);
     setHostMsg('Syncing match events...');
-    const HEADERS = { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtYXNhYXB3Ymh4dWV1aHh4cWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTI1OTgsImV4cCI6MjA5NjM4ODU5OH0.pAdFowezL_l7QLLA0Y4KgyGAcDbYtx0OppA_id1agdY' };
-    const BASE = 'https://hmasaapwbhxueuhxxqkd.supabase.co/functions/v1';
+    const HEADERS = { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY };
+    const BASE = FUNCTIONS_URL;
     try {
       // Step 1: sync latest match events from ESPN
       await fetch(`${BASE}/sync-match-events`, { method: 'POST', headers: HEADERS, body: '{}' });
