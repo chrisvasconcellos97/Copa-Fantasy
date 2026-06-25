@@ -4,7 +4,6 @@ import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
 import { getSession, setSession } from '../lib/session';
 import { supabase } from '../lib/supabase';
-import { v4 as uuidv4 } from 'uuid';
 import CopyCode from '../components/CopyCode';
 import MascotHint from '../components/MascotHint';
 
@@ -90,19 +89,16 @@ export default function LobbyView() {
         .eq('id', gameId);
       if (linkErr) throw linkErr;
 
-      // Move Group B players to Game B
+      // Move Group B players to Game B by re-pointing their existing row.
+      // Re-using the row (rather than insert-then-delete) preserves each
+      // player's id and token, so their saved session and rejoin link keep
+      // working — and a mid-loop failure can't drop a player entirely.
       for (const player of groupB) {
-        const { error: insertErr } = await supabase
+        const { error: moveErr } = await supabase
           .from('game_players')
-          .insert({
-            game_id: gameB.id,
-            player_name: player.player_name,
-            is_host: false,
-            token: player.token || uuidv4(),
-          });
-        if (insertErr) throw insertErr;
-
-        await supabase.from('game_players').delete().eq('id', player.id);
+          .update({ game_id: gameB.id, is_host: false })
+          .eq('id', player.id);
+        if (moveErr) throw moveErr;
       }
 
       // Update session with linked game id

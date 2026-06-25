@@ -8,6 +8,7 @@ import LeaderboardView from './views/LeaderboardView';
 import CombinedLeaderboardView from './views/CombinedLeaderboardView';
 import StatsView from './views/StatsView';
 import PointsModal from './components/PointsModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import { getSession, clearSession } from './lib/session';
 
 function Nav() {
@@ -87,15 +88,17 @@ export default function App() {
     <BrowserRouter>
       <div className="app-container">
         <Nav />
-        <Routes>
-          <Route path="/" element={<HomeView />} />
-          <Route path="/lobby/:gameId" element={<LobbyView />} />
-          <Route path="/draft/:gameId" element={<DraftView />} />
-          <Route path="/matches" element={<MatchCenterView />} />
-          <Route path="/leaderboard/:gameId" element={<LeaderboardView />} />
-          <Route path="/combined/:gameId" element={<CombinedLeaderboardView />} />
-          <Route path="/stats" element={<StatsView />} />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<HomeView />} />
+            <Route path="/lobby/:gameId" element={<LobbyView />} />
+            <Route path="/draft/:gameId" element={<DraftView />} />
+            <Route path="/matches" element={<MatchCenterView />} />
+            <Route path="/leaderboard/:gameId" element={<LeaderboardView />} />
+            <Route path="/combined/:gameId" element={<CombinedLeaderboardView />} />
+            <Route path="/stats" element={<StatsView />} />
+          </Routes>
+        </ErrorBoundary>
       </div>
     </BrowserRouter>
   );
