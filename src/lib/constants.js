@@ -1,25 +1,8 @@
-export const SCORING = {
-  // Team results
-  GROUP_WIN: 3,
-  GROUP_DRAW: 1,
-  GROUP_LOSS: 0,
-  R32_WIN: 5,
-  R16_WIN: 8,
-  QF_WIN: 13,
-  SF_WIN: 21,
-  FINAL_WIN: 34,
-  CHAMPION: 55,
-  // Player events
-  GOAL: 6,
-  ASSIST: 4,
-  CLEAN_SHEET_GK: 10,
-  CLEAN_SHEET_DEF: 6,
-  YELLOW_CARD: -1,
-  RED_CARD: -3,
-  TOP_SCORER: 15,
-  GOLDEN_BOOT: 20,
-};
-
+// NOTE: The authoritative point values live in src/lib/scoring.js (and the
+// server engines). RESULT_TYPES below is only used by the host's manual
+// "Add team result" panel in LeaderboardView and will be reconciled into the
+// add_team_result RPC during the security migration; do not treat it as the
+// scoring source of truth.
 export const RESULT_TYPES = [
   { value: 'group_win', label: 'Group Stage Win', points: 3 },
   { value: 'group_draw', label: 'Group Stage Draw', points: 1 },
@@ -30,11 +13,6 @@ export const RESULT_TYPES = [
   { value: 'sf_win', label: 'Semi-Final Win', points: 21 },
   { value: 'final_win', label: 'Final Win', points: 34 },
   { value: 'champion', label: 'Champion Bonus', points: 55 },
-];
-
-export const BONUS_TYPES = [
-  { value: 'top_scorer', label: 'Top Scorer (Round)', points: 15 },
-  { value: 'custom', label: 'Custom Bonus', points: 0 },
 ];
 
 const L = (code) => `https://a.espncdn.com/i/teamlogos/countries/500/${code}.png`;

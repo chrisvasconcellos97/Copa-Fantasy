@@ -1,5 +1,5 @@
 import React from 'react';
-import { TEAM_POINTS, PLAYER_POINTS } from '../lib/scoring';
+import { TEAM_SCORING_ROWS, PLAYER_SCORING_ROWS, CAPTAIN_MULTIPLIER } from '../lib/scoring';
 
 const Row = ({ label, value, positive = true }) => (
   <div style={{
@@ -17,7 +17,7 @@ const Row = ({ label, value, positive = true }) => (
       minWidth: 36,
       textAlign: 'right',
     }}>
-      {positive ? '+' : ''}{value}
+      {positive && value > 0 ? '+' : ''}{value}
     </span>
   </div>
 );
@@ -62,14 +62,9 @@ export default function PointsModal({ onClose }) {
           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
             Your Teams
           </div>
-          <Row label="Win in group stage" value={TEAM_POINTS.group_win} />
-          <Row label="Draw in group stage" value={TEAM_POINTS.group_draw} />
-          <Row label="Loss in group stage" value={TEAM_POINTS.group_loss} positive={false} />
-          <Row label="Win in Round of 32" value={TEAM_POINTS.r32_win} />
-          <Row label="Win in Quarter-final" value={TEAM_POINTS.qf_win} />
-          <Row label="Win in Semi-final" value={TEAM_POINTS.sf_win} />
-          <Row label="Win the Final" value={TEAM_POINTS.final_win} />
-          <Row label="Tournament champion" value={TEAM_POINTS.champion} />
+          {TEAM_SCORING_ROWS.map(r => (
+            <Row key={r.label} label={r.label} value={r.value} positive={r.positive !== false} />
+          ))}
         </div>
 
         {/* Player points */}
@@ -77,15 +72,9 @@ export default function PointsModal({ onClose }) {
           <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
             Your Players
           </div>
-          <Row label="Goal scored" value={PLAYER_POINTS.goal} />
-          <Row label="Assist" value={PLAYER_POINTS.assist} />
-          <Row label="Clean sheet (GK)" value={PLAYER_POINTS.clean_sheet_gk} />
-          <Row label="Clean sheet (Defender)" value={PLAYER_POINTS.clean_sheet_def} />
-          <Row label="Man of the Match" value={PLAYER_POINTS.motm} />
-          <Row label="Tournament top scorer" value={PLAYER_POINTS.top_scorer} />
-          <Row label="Golden Boot winner" value={PLAYER_POINTS.golden_boot} />
-          <Row label="Yellow card" value={PLAYER_POINTS.yellow_card} positive={false} />
-          <Row label="Red card" value={PLAYER_POINTS.red_card} positive={false} />
+          {PLAYER_SCORING_ROWS.map(r => (
+            <Row key={r.label} label={r.label} value={r.value} positive={r.positive !== false} />
+          ))}
         </div>
 
         {/* Captain note */}
@@ -98,7 +87,7 @@ export default function PointsModal({ onClose }) {
           color: 'var(--text)',
           lineHeight: 1.5,
         }}>
-          👑 <strong style={{ color: 'var(--gold)' }}>Captain bonus:</strong> Your chosen captain earns <strong>double points</strong> on every stat listed above.
+          👑 <strong style={{ color: 'var(--gold)' }}>Captain bonus:</strong> Your chosen captain earns <strong>{CAPTAIN_MULTIPLIER}×</strong> on every player stat above — goals, assists, clean sheets, match bonuses and the Golden Boot all count double.
         </div>
       </div>
     </div>
