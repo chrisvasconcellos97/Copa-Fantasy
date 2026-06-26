@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useScores } from '../hooks/useScores.js';
 import { usePlayers } from '../hooks/usePlayers.js';
 import { useDraft } from '../hooks/useDraft.js';
-import { getSession } from '../lib/session.js';
+import { getSession, ensureAuth } from '../lib/session.js';
 import { supabase, SUPABASE_ANON_KEY, FUNCTIONS_URL } from '../lib/supabase.js';
 import { RESULT_TYPES, normalizePosition } from '../lib/constants.js';
 import LeaderboardRow from '../components/LeaderboardRow.jsx';
@@ -350,21 +350,20 @@ export default function LeaderboardView() {
   const session = getSession();
   const [linkedGameId, setLinkedGameId] = useState(null);
   const [joinCode, setJoinCode] = useState(null);
-  const [gameHostToken, setGameHostToken] = useState(null);
   const [teamsPerPlayer, setTeamsPerPlayer] = useState(8);
   const [codeCopied, setCodeCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
-  // Host status must be verified against THIS game's host token — not just
-  // "do I hold any host token" (which would grant host controls on every game).
-  const isHost = Boolean(session?.hostToken && gameHostToken && session.hostToken === gameHostToken);
+  // Host status comes from the JWT-backed session flag. Host RPCs additionally
+  // enforce that the caller's JWT game_id matches the target game, so even if
+  // the controls render they cannot affect a game the caller doesn't host.
+  const isHost = session?.isHost === true;
 
   useEffect(() => {
-    supabase.from('games').select('linked_game_id, join_code, host_token, teams_per_player').eq('id', gameId).single()
+    supabase.from('games').select('linked_game_id, join_code, teams_per_player').eq('id', gameId).single()
       .then(({ data }) => {
         if (data?.linked_game_id) setLinkedGameId(data.linked_game_id);
         if (data?.join_code) setJoinCode(data.join_code);
-        if (data?.host_token) setGameHostToken(data.host_token);
         if (data?.teams_per_player) setTeamsPerPlayer(data.teams_per_player);
       });
   }, [gameId]);
@@ -475,34 +474,15 @@ export default function LeaderboardView() {
     setHostMsg('');
     try {
       const pts = RESULT_TYPES.find(r => r.value === selectedResultType)?.points || 0;
-      // Find all game_players who have this team
-      const gamePickers = picks
-        .filter(p => p.team_api_id === selectedTeamId)
-        .map(p => p.game_player_id);
-
-      for (const gpId of gamePickers) {
-        // Get or create user_scores row
-        const { data: existing } = await supabase
-          .from('user_scores')
-          .select('*')
-          .eq('game_id', gameId)
-          .eq('game_player_id', gpId)
-          .single();
-
-        const currentBreakdown = existing?.breakdown || {};
-        const teamKey = `team_${selectedTeamId}_${selectedResultType}`;
-        const newBreakdown = { ...currentBreakdown, [teamKey]: (currentBreakdown[teamKey] || 0) + pts };
-        const newTotal = Object.values(newBreakdown).reduce((a, b) => a + b, 0);
-
-        await supabase.from('user_scores').upsert({
-          game_id: gameId,
-          game_player_id: gpId,
-          total_points: newTotal,
-          breakdown: newBreakdown,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'game_id,game_player_id' });
-      }
-      setHostMsg(`Added ${pts} pts to ${gamePickers.length} player(s) for ${selectedResultType}`);
+      await ensureAuth();
+      const { error } = await supabase.rpc('add_team_result', {
+        p_game_id: gameId,
+        p_team_api_id: selectedTeamId,
+        p_result_type: selectedResultType,
+        p_points: pts,
+      });
+      if (error) throw error;
+      setHostMsg(`Added ${pts} pts for ${selectedResultType}`);
     } catch (err) {
       setHostMsg(`Error: ${err.message}`);
     } finally {
@@ -516,26 +496,14 @@ export default function LeaderboardView() {
     setHostMsg('');
     try {
       const pts = Number(bonusPoints);
-      const { data: existing } = await supabase
-        .from('user_scores')
-        .select('*')
-        .eq('game_id', gameId)
-        .eq('game_player_id', bonusPlayerId)
-        .single();
-
-      const currentBreakdown = existing?.breakdown || {};
-      const bonusKey = `bonus_${Date.now()}`;
-      const newBreakdown = { ...currentBreakdown, [bonusKey]: pts };
-      if (bonusDesc) newBreakdown[`bonus_desc_${Date.now()}`] = bonusDesc;
-      const newTotal = Object.values(newBreakdown).filter(v => typeof v === 'number').reduce((a, b) => a + b, 0);
-
-      await supabase.from('user_scores').upsert({
-        game_id: gameId,
-        game_player_id: bonusPlayerId,
-        total_points: newTotal,
-        breakdown: newBreakdown,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'game_id,game_player_id' });
+      await ensureAuth();
+      const { error } = await supabase.rpc('add_bonus', {
+        p_game_id: gameId,
+        p_game_player_id: bonusPlayerId,
+        p_points: pts,
+        p_desc: bonusDesc || null,
+      });
+      if (error) throw error;
 
       setHostMsg(`Added ${pts} bonus points`);
       setBonusPoints('');
@@ -576,19 +544,21 @@ export default function LeaderboardView() {
 
   async function handleRename(gpId, newName) {
     if (!newName?.trim()) return;
-    await supabase.from('game_players').update({ player_name: newName.trim() }).eq('id', gpId);
+    await ensureAuth();
+    const { error } = await supabase.rpc('rename_player', { p_game_player_id: gpId, p_new_name: newName.trim() });
+    if (error) setHostMsg(`Error: ${error.message}`);
   }
 
   async function handleOverride(gpId, newTotal) {
     setHostLoading(true);
     try {
-      await supabase.from('user_scores').upsert({
-        game_id: gameId,
-        game_player_id: gpId,
-        total_points: newTotal,
-        breakdown: { override: newTotal },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'game_id,game_player_id' });
+      await ensureAuth();
+      const { error } = await supabase.rpc('override_score', {
+        p_game_id: gameId,
+        p_game_player_id: gpId,
+        p_total: newTotal,
+      });
+      if (error) throw error;
       setHostMsg(`Override applied: ${newTotal} pts`);
     } catch (err) {
       setHostMsg(`Error: ${err.message}`);

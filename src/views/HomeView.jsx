@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Mascot from '../components/Mascot';
 import { useNavigate } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
-import { setSession } from '../lib/session';
-import { generateUniqueJoinCode } from '../lib/gameCode';
+import { setSession, bootstrapAuth } from '../lib/session';
 
 export default function HomeView() {
   const navigate = useNavigate();
@@ -29,19 +27,16 @@ export default function HomeView() {
       return;
     }
     (async () => {
-      const { data: gp } = await supabase
-        .from('game_players')
-        .select('id, player_name, is_host, game_id, token')
-        .eq('token', pt)
-        .single();
-      if (!gp) return;
-      const { data: game } = await supabase.from('games').select('*').eq('id', gp.game_id).single();
+      // Mint a JWT from the deep-link token; this also tells us who we are.
+      const player = await bootstrapAuth(pt);
+      if (!player) return;
+      const { data: game } = await supabase.from('games').select('id, status').eq('id', player.game_id).single();
       if (!game) return;
       setSession({
-        playerId: gp.id,
-        playerName: gp.player_name,
-        playerToken: gp.token,
-        hostToken: gp.is_host ? game.host_token : null,
+        playerId: player.id,
+        playerName: player.player_name,
+        playerToken: pt,
+        isHost: player.is_host === true,
         gameId: game.id,
       });
       localStorage.setItem('cf_game_id', game.id);
@@ -67,36 +62,24 @@ export default function HomeView() {
     setLoading(true);
     setError('');
     try {
-      const hostToken = uuidv4();
-      const playerToken = uuidv4();
-      const newJoinCode = await generateUniqueJoinCode();
-
-      // Create game
-      const { data: game, error: gameErr } = await supabase
-        .from('games')
-        .insert({ status: 'lobby', host_token: hostToken, join_code: newJoinCode, teams_per_player: teamsPerPlayer, players_per_team: playersPerTeam })
-        .select()
-        .single();
-      if (gameErr) throw gameErr;
-
-      // Create player
-      const { data: gamePlayer, error: playerErr } = await supabase
-        .from('game_players')
-        .insert({ game_id: game.id, player_name: createName.trim(), is_host: true, token: playerToken })
-        .select()
-        .single();
-      if (playerErr) throw playerErr;
-
-      setSession({
-        playerId: gamePlayer.id,
-        playerName: createName.trim(),
-        playerToken,
-        hostToken,
-        gameId: game.id,
+      const { data, error: rpcErr } = await supabase.rpc('create_game', {
+        p_host_name: createName.trim(),
+        p_teams_per_player: teamsPerPlayer,
+        p_players_per_team: playersPerTeam,
       });
-      localStorage.setItem('cf_game_id', game.id);
+      if (rpcErr) throw rpcErr;
 
-      navigate(`/lobby/${game.id}`);
+      await bootstrapAuth(data.player_token);
+      setSession({
+        playerId: data.player_id,
+        playerName: createName.trim(),
+        playerToken: data.player_token,
+        isHost: true,
+        gameId: data.game_id,
+      });
+      localStorage.setItem('cf_game_id', data.game_id);
+
+      navigate(`/lobby/${data.game_id}`);
     } catch (err) {
       setError(err.message || 'Failed to create game');
     } finally {
@@ -112,41 +95,29 @@ export default function HomeView() {
     try {
       const code = rejoinCode.trim().toUpperCase();
 
-      // Find game
-      const { data: game, error: gameErr } = await supabase
-        .from('games')
-        .select('*')
-        .eq('join_code', code)
-        .single();
-      if (gameErr || !game) throw new Error('Game not found. Check the code and try again.');
-
-      // Find player (case-insensitive)
-      const { data: players, error: playerErr } = await supabase
-        .from('game_players')
-        .select('*')
-        .eq('game_id', game.id)
-        .ilike('player_name', rejoinName.trim());
-      if (playerErr) throw playerErr;
-      if (!players || players.length === 0) throw new Error('No player with that name found in this game');
-
-      const gamePlayer = players[0];
-      const hostToken = gamePlayer.is_host ? game.host_token : null;
-
-      setSession({
-        playerId: gamePlayer.id,
-        playerName: gamePlayer.player_name,
-        playerToken: gamePlayer.token,
-        hostToken,
-        gameId: game.id,
+      // Look up the player's token by game code + name, then mint a JWT.
+      const { data, error: rpcErr } = await supabase.rpc('rejoin_lookup', {
+        p_join_code: code,
+        p_player_name: rejoinName.trim(),
       });
-      localStorage.setItem('cf_game_id', game.id);
+      if (rpcErr) throw new Error(rpcErr.message || 'Failed to rejoin game');
 
-      if (game.status === 'lobby') {
-        navigate(`/lobby/${game.id}`);
-      } else if (['drafting_teams', 'selecting_players', 'selecting_captain'].includes(game.status)) {
-        navigate(`/draft/${game.id}`);
+      await bootstrapAuth(data.player_token);
+      setSession({
+        playerId: data.player_id,
+        playerName: rejoinName.trim(),
+        playerToken: data.player_token,
+        isHost: data.is_host === true,
+        gameId: data.game_id,
+      });
+      localStorage.setItem('cf_game_id', data.game_id);
+
+      if (data.status === 'lobby') {
+        navigate(`/lobby/${data.game_id}`);
+      } else if (['drafting_teams', 'selecting_players', 'selecting_captain'].includes(data.status)) {
+        navigate(`/draft/${data.game_id}`);
       } else {
-        navigate(`/leaderboard/${game.id}`);
+        navigate(`/leaderboard/${data.game_id}`);
       }
     } catch (err) {
       setError(err.message || 'Failed to rejoin game');
@@ -163,37 +134,23 @@ export default function HomeView() {
     try {
       const code = joinCode.trim().toUpperCase();
 
-      // Find game
-      const { data: game, error: gameErr } = await supabase
-        .from('games')
-        .select('*')
-        .eq('join_code', code)
-        .single();
-      if (gameErr || !game) throw new Error('Game not found. Check the code and try again.');
-
-      if (game.status !== 'lobby') {
-        throw new Error('This game has already started.');
-      }
-
-      // Create player
-      const playerToken = uuidv4();
-      const { data: gamePlayer, error: playerErr } = await supabase
-        .from('game_players')
-        .insert({ game_id: game.id, player_name: joinName.trim(), is_host: false, token: playerToken })
-        .select()
-        .single();
-      if (playerErr) throw playerErr;
-
-      setSession({
-        playerId: gamePlayer.id,
-        playerName: joinName.trim(),
-        playerToken,
-        hostToken: null,
-        gameId: game.id,
+      const { data, error: rpcErr } = await supabase.rpc('join_game', {
+        p_join_code: code,
+        p_player_name: joinName.trim(),
       });
-      localStorage.setItem('cf_game_id', game.id);
+      if (rpcErr) throw new Error(rpcErr.message || 'Failed to join game');
 
-      navigate(`/lobby/${game.id}`);
+      await bootstrapAuth(data.player_token);
+      setSession({
+        playerId: data.player_id,
+        playerName: joinName.trim(),
+        playerToken: data.player_token,
+        isHost: false,
+        gameId: data.game_id,
+      });
+      localStorage.setItem('cf_game_id', data.game_id);
+
+      navigate(`/lobby/${data.game_id}`);
     } catch (err) {
       setError(err.message || 'Failed to join game');
     } finally {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { ensureAuth } from '../lib/session';
 import { normalizePosition } from '../lib/constants';
 import { getSquadForTeam } from '../lib/wcSquads';
 
@@ -50,6 +51,7 @@ export default function SubstitutionModal({ gameId, gamePlayerId, draftPick, tea
     setSaving(true);
     setError('');
     try {
+      await ensureAuth();
       const { error: err } = await supabase.from('substitutions').insert({
         game_id: gameId,
         game_player_id: gamePlayerId,

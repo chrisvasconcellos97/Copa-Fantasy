@@ -14,4 +14,20 @@ export const SUPABASE_ANON_KEY =
 
 export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Per-player JWT (minted by the auth-issue edge function). Held in memory and
+// handed to supabase-js via the accessToken callback below, which uses it for
+// both REST (Authorization) and Realtime. When null, supabase-js falls back to
+// the anon key, so the app still works pre-cutover.
+let _authJwt = null;
+export function getAuthJwt() { return _authJwt; }
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  accessToken: async () => _authJwt,
+});
+
+export function setAuthJwt(jwt) {
+  _authJwt = jwt || null;
+  // Push the token to the Realtime socket so already-open channels re-authorize
+  // under the new identity (RLS on postgres_changes uses this token).
+  try { supabase.realtime.setAuth(_authJwt ?? SUPABASE_ANON_KEY); } catch { /* noop */ }
+}

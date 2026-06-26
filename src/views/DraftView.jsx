@@ -4,7 +4,7 @@ import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
 import { useDraft } from '../hooks/useDraft';
 import { useNotifications } from '../hooks/useNotifications';
-import { getSession } from '../lib/session';
+import { getSession, ensureAuth } from '../lib/session';
 import { supabase } from '../lib/supabase';
 import { FALLBACK_POTS, normalizePosition } from '../lib/constants';
 import { getSnakeOrder, getCurrentPicker } from '../lib/draft';
@@ -84,7 +84,7 @@ export default function DraftView() {
   const { picks, loading: picksLoading } = useDraft(gameId);
   const session = getSession();
   const myPlayerId = session?.playerId;
-  const isHost = session?.hostToken && game?.host_token === session?.hostToken;
+  const isHost = session?.isHost === true || (!!session?.hostToken && game?.host_token === session?.hostToken);
   // isObserver: host is viewing the linked group they're not a player in
   const isObserver = isHost && players.length > 0 && !players.find(p => p.id === myPlayerId);
 
@@ -272,15 +272,13 @@ export default function DraftView() {
     if (!selectedTeam || !isMyTurn || submitting) return;
     setSubmitting(true);
     try {
-      const pickNumber = picks.length + 1;
       const isRealTeam = selectedTeam.api_id > 0;
-      const { error } = await supabase.from('draft_picks').insert({
-        game_id: gameId,
-        game_player_id: myPlayerId,
-        pick_number: pickNumber,
-        pot: selectedTeam.pot,
-        team_code: selectedTeam.code || selectedTeam.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6),
-        team_api_id: isRealTeam ? selectedTeam.api_id : null,
+      await ensureAuth();
+      const { error } = await supabase.rpc('make_draft_pick', {
+        p_game_id: gameId,
+        p_pot: selectedTeam.pot,
+        p_team_code: selectedTeam.code || selectedTeam.name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6),
+        p_team_api_id: isRealTeam ? selectedTeam.api_id : null,
       });
       if (error) throw error;
       setSelectedTeam(null);
@@ -292,6 +290,7 @@ export default function DraftView() {
   }
 
   async function handlePoke(player) {
+    await ensureAuth();
     await supabase.from('notifications').insert({
       game_id: gameId,
       game_player_id: player.id,
@@ -313,10 +312,8 @@ export default function DraftView() {
     // No blocking check — the host decides when to advance.
     // The host dashboard shows who is/isn't done.
 
-    const { error } = await supabase
-      .from('games')
-      .update({ status: next })
-      .eq('id', gameId);
+    await ensureAuth();
+    const { error } = await supabase.rpc('advance_phase', { p_game_id: gameId, p_status: next });
     if (error) alert('Error: ' + error.message);
   }
 
@@ -394,6 +391,7 @@ export default function DraftView() {
   }
 
   async function _savePicksForTeam(teamApiId, playerIds, draftPick) {
+    await ensureAuth();
     await supabase.from('player_picks').delete()
       .eq('game_id', gameId).eq('game_player_id', myPlayerId).eq('draft_pick_id', draftPick.id);
     const squad = teamPlayers[teamApiId] || [];
@@ -441,6 +439,7 @@ export default function DraftView() {
 
   async function handleSaveCaptain() {
     if (!captainPickId) return;
+    await ensureAuth();
     // Find the player_pick row for this player
     const playerPickRow = savedPlayerPicks.find((p) => p.player_api_id === captainPickId);
     if (!playerPickRow?.id || playerPickRow.id.startsWith('temp-')) {
@@ -521,7 +520,9 @@ export default function DraftView() {
           <p style={{ fontWeight: 700, marginBottom: 8 }}>👁 Viewing Group B</p>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 16 }}>Group B's draft hasn't started yet.</p>
           <button className="btn btn-primary btn-full btn-lg" onClick={async () => {
-            await supabase.from('games').update({ status: 'drafting_teams' }).eq('id', gameId);
+            await ensureAuth();
+            const { error } = await supabase.rpc('advance_phase', { p_game_id: gameId, p_status: 'drafting_teams' });
+            if (error) alert('Error: ' + error.message);
           }}>🚀 Start Group B Draft</button>
           <button className="btn btn-full mt-8" style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }} onClick={() => navigate(-1)}>← Back to Group A</button>
         </div>

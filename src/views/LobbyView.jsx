@@ -2,9 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGame } from '../hooks/useGame';
 import { usePlayers } from '../hooks/usePlayers';
-import { getSession, setSession } from '../lib/session';
+import { getSession, setSession, ensureAuth } from '../lib/session';
 import { supabase } from '../lib/supabase';
-import { generateUniqueJoinCode } from '../lib/gameCode';
 import CopyCode from '../components/CopyCode';
 import MascotHint from '../components/MascotHint';
 
@@ -14,7 +13,9 @@ export default function LobbyView() {
   const { game, loading: gameLoading } = useGame(gameId);
   const { players, loading: playersLoading } = usePlayers(gameId);
   const session = getSession();
-  const isHost = session?.hostToken && game?.host_token === session.hostToken;
+  // Host status comes from the JWT-backed session flag; fall back to the legacy
+  // host_token comparison for sessions created before the auth cut-over.
+  const isHost = session?.isHost === true || (!!session?.hostToken && game?.host_token === session?.hostToken);
 
   const [showSplit, setShowSplit] = useState(false);
   const [groupAssignment, setGroupAssignment] = useState({}); // playerId -> 'A' | 'B'
@@ -68,46 +69,21 @@ export default function LobbyView() {
 
     setSplitting(true);
     try {
-      // Create Game B with same host_token and settings
-      const { data: gameB, error: gameBErr } = await supabase
-        .from('games')
-        .insert({
-          status: 'lobby',
-          host_token: game.host_token,
-          join_code: await generateUniqueJoinCode(),
-          teams_per_player: game.teams_per_player ?? 8,
-          players_per_team: game.players_per_team ?? 3,
-          linked_game_id: gameId,
-        })
-        .select()
-        .single();
-      if (gameBErr) throw gameBErr;
-
-      // Link Game A back to Game B
-      const { error: linkErr } = await supabase
-        .from('games')
-        .update({ linked_game_id: gameB.id })
-        .eq('id', gameId);
-      if (linkErr) throw linkErr;
-
-      // Move Group B players to Game B by re-pointing their existing row.
-      // Re-using the row (rather than insert-then-delete) preserves each
-      // player's id and token, so their saved session and rejoin link keep
-      // working — and a mid-loop failure can't drop a player entirely.
-      for (const player of groupB) {
-        const { error: moveErr } = await supabase
-          .from('game_players')
-          .update({ game_id: gameB.id, is_host: false })
-          .eq('id', player.id);
-        if (moveErr) throw moveErr;
-      }
+      await ensureAuth();
+      // The RPC atomically creates Game B, links the two, and re-points the
+      // Group B players (preserving their ids/tokens so sessions keep working).
+      const { data: result, error: rpcErr } = await supabase.rpc('split_group', {
+        p_game_id: gameId,
+        p_move_player_ids: groupB.map(p => p.id),
+      });
+      if (rpcErr) throw rpcErr;
 
       // Update session with linked game id
-      setSession({ ...session, linkedGameId: gameB.id });
+      setSession({ ...session, linkedGameId: result.group_b_game_id });
 
       setShowSplit(false);
       setSplitting(false);
-      alert(`Groups split! Group B has its own game. Share the Group B code with them: ${gameB.join_code}`);
+      alert(`Groups split! Group B has its own game. Share the Group B code with them: ${result.join_code}`);
     } catch (err) {
       alert('Failed to split groups: ' + err.message);
       setSplitting(false);
@@ -116,7 +92,9 @@ export default function LobbyView() {
 
   async function handleBootPlayer(playerId) {
     if (!confirm('Remove this player from the lobby?')) return;
-    await supabase.from('game_players').delete().eq('id', playerId);
+    await ensureAuth();
+    const { error } = await supabase.rpc('boot_player', { p_game_player_id: playerId });
+    if (error) alert('Failed to remove player: ' + error.message);
   }
 
   async function handleStartDraft() {
@@ -124,10 +102,8 @@ export default function LobbyView() {
       alert('Need at least 1 player to start the draft.');
       return;
     }
-    const { error } = await supabase
-      .from('games')
-      .update({ status: 'drafting_teams' })
-      .eq('id', gameId);
+    await ensureAuth();
+    const { error } = await supabase.rpc('advance_phase', { p_game_id: gameId, p_status: 'drafting_teams' });
     if (error) alert('Failed to start draft: ' + error.message);
   }
 

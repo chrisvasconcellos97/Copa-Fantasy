@@ -9,7 +9,7 @@ import CombinedLeaderboardView from './views/CombinedLeaderboardView';
 import StatsView from './views/StatsView';
 import PointsModal from './components/PointsModal';
 import ErrorBoundary from './components/ErrorBoundary';
-import { getSession, clearSession } from './lib/session';
+import { getSession, clearSession, ensureAuth } from './lib/session';
 
 function Nav() {
   const [session, setSession] = useState(() => getSession());
@@ -84,6 +84,10 @@ function Nav() {
 }
 
 export default function App() {
+  // Attach the per-player JWT (if we have a stored session) as early as possible,
+  // so subsequent reads/writes carry the caller's identity.
+  useEffect(() => { ensureAuth(); }, []);
+
   return (
     <BrowserRouter>
       <div className="app-container">
