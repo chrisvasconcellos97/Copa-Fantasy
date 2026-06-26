@@ -8,7 +8,7 @@ const HL_HEADERS = { 'x-rapidapi-key': HL_KEY, 'x-rapidapi-host': 'soccer.highli
 let rateLimited = false;
 
 function normName(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 function hlNameKey(name: string): string {
   const clean = normName(name);
