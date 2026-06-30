@@ -84,9 +84,9 @@ export default function MatchDetail({ fixture }) {
 
         // Key events (goals, cards)
         const events = keyEvents
-          .filter(e => ['goal', 'penalty-scored', 'own-goal', 'yellow-card', 'red-card', 'yellow-red-card'].includes(e.type?.id || e.type))
+          .filter(e => ['goal', 'penalty-scored', 'own-goal', 'yellow-card', 'red-card', 'yellow-red-card'].includes(e.type?.type || e.type?.id || e.type))
           .map(e => {
-            const type = e.type?.id || e.type;
+            const type = e.type?.type || e.type?.id || e.type;
             const clock = e.clock?.displayValue || '';
             const minute = parseInt(clock) || null;
             const participants = e.participants || [];
