@@ -304,6 +304,8 @@ export default function LeaderboardRow({
                       ? `${homeTeam.name} ${fix.home_goals}–${fix.away_goals} ${awayTeam.name}`
                       : `Match #${fixId}`;
                     const open = expandedFixtures.has(fixId);
+                    const playerEntries = entries.filter(({ key }) => /^player_|^cs_|^brace_|^hattrick_|^dbl_assist_/.test(key));
+                    const otherEntries = entries.filter(({ key }) => !/^player_|^cs_|^brace_|^hattrick_|^dbl_assist_/.test(key));
                     return (
                       <div key={fixId} style={{ borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
                         {/* Fixture header row — always visible, click to expand */}
@@ -319,7 +321,20 @@ export default function LeaderboardRow({
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
                           </div>
                         </div>
-                        {/* Expanded detail */}
+                        {/* Player events always visible (goals, assists, clean sheets, bonuses) */}
+                        {!open && playerEntries.length > 0 && (
+                          <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {playerEntries.map(({ key, val, label }) => (
+                              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', gap: 8 }}>
+                                <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                                <span style={{ color: val >= 0 ? 'var(--success)' : 'var(--danger)', flexShrink: 0 }}>
+                                  {val >= 0 ? '+' : ''}{val}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Expanded detail — all entries */}
                         {open && (
                           <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {entries.map(({ key, val, label }) => (
